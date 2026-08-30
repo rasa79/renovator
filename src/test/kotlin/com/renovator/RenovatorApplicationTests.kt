@@ -11,7 +11,6 @@ import org.springframework.web.client.RestClient
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class RenovatorApplicationTests {
-
     @LocalServerPort
     var port: Int = 0
 
@@ -27,10 +26,11 @@ class RenovatorApplicationTests {
         // RestTestClient (org.springframework.test.web.servlet.client) as the replacement.
         // This smoke assertion uses spring-web's RestClient — stable, main-API, zero new surface.
         val client = RestClient.create()
-        val response: ResponseEntity<String> = client.get()
-            .uri("http://localhost:$port/actuator/health")
-            .retrieve()
-            .toEntity(String::class.java)
+
+        // Fluent calls kept on single lines: ktlint's multiline-chain rules are stricter than
+        // plain readability here, and the chain is short enough to stay legible.
+        val request = client.get().uri("http://localhost:$port/actuator/health")
+        val response: ResponseEntity<String> = request.retrieve().toEntity(String::class.java)
         assertEquals(HttpStatus.OK, response.statusCode)
         // show-details: always is set for the demos, so assert within the JSON rather than
         // pinning the exact (details-dependent) body shape.

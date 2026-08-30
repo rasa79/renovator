@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.renovator</groupId>
+    <artifactId>renovator</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>renovator</name>
+    <description>Kotlin + Spring Boot 4 + Embabel agent with dynamic GOAP planning</description>
+
+    <properties>
+        <java.version>25</java.version>
+        <maven.compiler.release>25</maven.compiler.release>
+        <!-- Boot 4.1.1 manages kotlin.version = 2.3.21 (verified against spring-boot-dependencies-4.1.1.pom);
+             the plan's §3 rule ("Boot-managed kotlin.version first") is satisfied without an explicit property. -->
+        <embabel.version>1.5.1</embabel.version>
+        <jqwik.version>1.10.1</jqwik.version>
+    </properties>
+
+    <dependencies>
+        <!-- Web / REST + SSE (Phase 5) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Actuator: health, metrics (Micrometer + Prometheus, D14) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Embabel agent core (D1, D2) -->
+        <dependency>
+            <groupId>com.embabel.agent</groupId>
+            <artifactId>embabel-agent-starter</artifactId>
+            <version>${embabel.version}</version>
+        </dependency>
+        <!-- Cloud LLM provider (OpenAI-compatible, C-8; D5 default = cloud) -->
+        <dependency>
+            <groupId>com.embabel.agent</groupId>
+            <artifactId>embabel-agent-starter-openai</artifactId>
+            <version>${embabel.version}</version>
+        </dependency>
+        <!-- Any OpenAI-compatible endpoint (C-8; D5 optional Ollama via LLM_PROVIDER=ollama) -->
+        <dependency>
+            <groupId>com.embabel.agent</groupId>
+            <artifactId>embabel-agent-starter-openai-custom</artifactId>
+            <version>${embabel.version}</version>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Embabel test support. DRIFT (2026-08-30): the §3 pin
+             `embabel-agent-test-support` is published on Central as POM-only
+             (aggregator of embabel-agent-test/-common/-internal); depending on it
+             as a jar fails resolution. The concrete test-support classes used by
+             this project live in `embabel-agent-test` (EmbabelMockitoIntegrationTest)
+             and in `embabel-agent-api` (FakePromptRunner, FakeOperationContext,
+             IntegrationTestUtils, AgentMetadataReader — transitive via the starter).
+             Recorded in docs/verification-log.md, row C-9. -->
+        <dependency>
+            <groupId>com.embabel.agent</groupId>
+            <artifactId>embabel-agent-test</artifactId>
+            <version>${embabel.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Property-based tests (jqwik; §3) -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>${jqwik.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>${project.basedir}/src/main/kotlin</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/src/test/kotlin</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <configuration>
+                    <args>
+                        <arg>-Xjsr305=strict</arg>
+                    </args>
+                    <compilerPlugins>
+                        <plugin>spring</plugin>
+                    </compilerPlugins>
+                    <jvmTarget>25</jvmTarget>
+                </configuration>
+                <dependencies>
+                    <!-- Standard Kotlin/Spring interop: makes @Configuration/@Component classes open -->
+                    <dependency>
+                        <groupId>org.jetbrains.kotlin</groupId>
+                        <artifactId>kotlin-maven-allopen</artifactId>
+                        <version>${kotlin.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>test-compile</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>test-compile</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Default (no profile): unit tests only. Class names are matched against the
+                         compiled class files, so a Kotlin *IT class is matched by the same patterns.
+                         The docker-it / llm-it profiles broaden the include set to run *IT classes. -->
+                    <includes>
+                        <include>**/Test*.java</include>
+                        <include>**/*Test.java</include>
+                        <include>**/*Tests.java</include>
+                        <include>**/*TestCase.java</include>
+                    </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Docker-dependent *IT tests (sandbox build runner, Phase 1+):
+             runs unit tests AND all *IT classes in the same verify. -->
+        <profile>
+            <id>docker-it</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/*.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <!-- Live-LLM *IT tests (requires real provider credentials; D13) -->
+        <profile>
+            <id>llm-it</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/*.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

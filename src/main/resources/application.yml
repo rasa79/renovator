@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: renovator
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+embabel:
+  # Both Embabel OpenAI starters HARD-REQUIRE an api-key at context startup
+  # (verified in v1.5.1 source: OpenAiModelsConfig / OpenAiCustomModelsConfig error()
+  # when absent). The docs' install guide uses a dev placeholder ("sk-dev-key");
+  # real credentials arrive via env vars. Task 0.4 formalizes this wiring.
+  #
+  # base-url must NOT be set to an empty placeholder: OpenAiModelsConfig passes the
+  # resolved value straight to the factory, and openai-java 4.36.0 (Spring AI 2.0)
+  # NPEs on "host must not be null" for a blank-but-non-null baseUrl (their own
+  # OpenAiCompatibleModelFactoryTest documents this). Omit the property entirely;
+  # the autoconfig directly reads OPENAI_BASE_URL / OPENAI_CUSTOM_BASE_URL env vars.
+  agent:
+    platform:
+      models:
+        openai:
+          api-key: ${OPENAI_API_KEY:sk-dev-key}
+          custom:
+            api-key: ${OPENAI_CUSTOM_API_KEY:sk-dev-key}
+  models:
+    default-llm: ${LLM_MODEL:gpt-4.1-mini}

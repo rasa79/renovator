@@ -28,6 +28,12 @@
     </properties>
 
     <dependencies>
+        <!-- Kotlin reflection: required for constructor-based @ConfigurationProperties
+             binding of Kotlin data classes in Spring Boot -->
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-reflect</artifactId>
+        </dependency>
         <!-- Web / REST + SSE (Phase 5) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -14,17 +14,52 @@ management:
     health:
       show-details: always
 
+# ---------------------------------------------------------------------------
+# Renovator's own configuration (bound to RenovatorProperties, renovator.*)
+# ---------------------------------------------------------------------------
+renovator:
+  llm:
+    # D5: cloud | ollama. The switch is env-only; no code path branches on it
+    # (LlmProviderConfig is the single mapping location, applied at boot).
+    provider: ${LLM_PROVIDER:cloud}
+    model: ${LLM_MODEL:gpt-4.1-mini}
+    base-url: ${LLM_BASE_URL:}
+    api-key: ${LLM_API_KEY:}
+    planner-role: ${LLM_PLANNER_ROLE:planner}
+  sandbox:
+    image: maven:3.9.11-eclipse-temurin-25
+    timeout-seconds: ${SANDBOX_TIMEOUT_SECONDS:120}
+    memory-mb: 2048
+    cpus: 2
+    cache-volume: renovator-m2-cache
+  validation:
+    allowed-paths:
+      - pom.xml
+      - src/main/java/**
+      - src/main/kotlin/**
+      - src/test/**
+    forbidden-paths:
+      - .git/**
+      - '**/*.sh'
+      - '**/secrets/**'
+      - '**/.env*'
+    allowed-repositories:
+      - https://repo1.maven.org/maven2
+    allow-snapshots: false
+    dry-run-compile: ${DRY_RUN_COMPILE:on-commit-candidate}
+  approvals:
+    plan: ${APPROVE_PLAN:false}
+    commit-candidate: ${APPROVE_COMMIT_CANDIDATE:false}
+  budget:
+    max-actions: ${MAX_ACTIONS:25}
+
+# ---------------------------------------------------------------------------
+# Embabel wiring. See docs/verification-log.md rows C-8 for why:
+#  - api-keys are hard-required at startup (dev placeholders below; real keys via env)
+#  - base-url must not be bound to an empty placeholder (openai-java NPE, C-8 note c)
+#  - LlmEnvironmentPostProcessor overlays renovator.llm.* → embabel.* at boot
+# ---------------------------------------------------------------------------
 embabel:
-  # Both Embabel OpenAI starters HARD-REQUIRE an api-key at context startup
-  # (verified in v1.5.1 source: OpenAiModelsConfig / OpenAiCustomModelsConfig error()
-  # when absent). The docs' install guide uses a dev placeholder ("sk-dev-key");
-  # real credentials arrive via env vars. Task 0.4 formalizes this wiring.
-  #
-  # base-url must NOT be set to an empty placeholder: OpenAiModelsConfig passes the
-  # resolved value straight to the factory, and openai-java 4.36.0 (Spring AI 2.0)
-  # NPEs on "host must not be null" for a blank-but-non-null baseUrl (their own
-  # OpenAiCompatibleModelFactoryTest documents this). Omit the property entirely;
-  # the autoconfig directly reads OPENAI_BASE_URL / OPENAI_CUSTOM_BASE_URL env vars.
   agent:
     platform:
       models:
@@ -32,5 +67,11 @@ embabel:
           api-key: ${OPENAI_API_KEY:sk-dev-key}
           custom:
             api-key: ${OPENAI_CUSTOM_API_KEY:sk-dev-key}
+      # Small/local-model resilience knobs (C-8). Uncomment for weak models:
+      # toolloop:
+      #   type: parallel
+      #   max-iterations: 20
+      #   empty-response.max-retries: 1
+      #   tool-not-found.max-retries: 2
   models:
     default-llm: ${LLM_MODEL:gpt-4.1-mini}

@@ -19,3 +19,6 @@ var/runs/*
 
 # jqwik property-testing working database (regenerated per run)
 .jqwik-database
+
+# Python bytecode (protocol checker self-tests)
+__pycache__/

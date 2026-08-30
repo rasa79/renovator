@@ -1,0 +1,18 @@
+# Build outputs
+target/
+
+# Runtime data: trajectory JSONL, process snapshots (only .gitkeep is tracked)
+var/runs/*
+!var/runs/.gitkeep
+
+# Logs
+*.log
+
+# Local tooling scratch inside the repo (ctx7 CLI installed workspace-local,
+# because the environment does not permit global npm installs — see phase-0 report)
+.tools/
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/

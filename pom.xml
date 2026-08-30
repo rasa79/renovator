@@ -24,6 +24,7 @@
              the plan's §3 rule ("Boot-managed kotlin.version first") is satisfied without an explicit property. -->
         <embabel.version>1.5.1</embabel.version>
         <jqwik.version>1.10.1</jqwik.version>
+        <ktlint-maven-plugin.version>3.7.1</ktlint-maven-plugin.version>
     </properties>
 
     <dependencies>
@@ -131,6 +132,22 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- Lint decision (verified 2026-08-30): ktlint, not detekt (PLAN §3).
+                 Bound to verify so an unformatted tree fails the gate command itself. -->
+            <plugin>
+                <groupId>com.github.gantsign.maven</groupId>
+                <artifactId>ktlint-maven-plugin</artifactId>
+                <version>${ktlint-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>ktlint-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

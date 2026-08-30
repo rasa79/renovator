@@ -16,3 +16,6 @@ var/runs/*
 .idea/
 *.iml
 .vscode/
+
+# jqwik property-testing working database (regenerated per run)
+.jqwik-database

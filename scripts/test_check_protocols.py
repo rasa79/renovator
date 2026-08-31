@@ -136,5 +136,23 @@ class P {
             self.assertEqual([], violations)
 
 
+class NoVerifyRuleTest(unittest.TestCase):
+    def test_rejects_no_verify_in_scripts(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write("scripts/evil.sh", "#!/usr/bin/env bash\ngit commit --no-verify -m x\n")
+            violations = []
+            chk.check_no_verify(Path(td), violations)
+            self.assertTrue(any("GW-4" in v and "evil.sh" in v for v in violations))
+
+    def test_accepts_prose_mention_in_docs(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write("docs/protocol.md", "`--no-verify` is forbidden (GW-4).\n")
+            violations = []
+            chk.check_no_verify(Path(td), violations)
+            self.assertEqual([], violations)
+
+
 if __name__ == "__main__":
     unittest.main()

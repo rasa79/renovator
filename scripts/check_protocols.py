@@ -289,6 +289,20 @@ def check_prompts(root: Path, phase: int, violations: list[str]):
                 break
 
 
+def check_no_verify(root: Path, violations: list[str]):
+    """GW-4 guard (reviewer standing condition, Phase 2): executable tooling must
+    never contain --no-verify, so the compound-fallback failure mode of the Phase-1.1
+    incident cannot silently return. Prose in docs/ (which documents the ban) is
+    deliberately not scanned. The pre-commit hook itself is covered even though it is
+    not under scripts/ — it is the file most likely to receive such a flag."""
+    targets = [(root / ".git/hooks/pre-commit", ".git/hooks/pre-commit")]
+    targets += [(f, f.relative_to(root).as_posix()) for f in (root / "scripts").glob("*.sh")]
+    for path, label in targets:
+        text = read_text(path)
+        if text is not None and "--no-verify" in text:
+            violations.append(f"GW-4: {label} contains --no-verify (forbidden by PLAN 10.3)")
+
+
 def check_phase_boundary(root: Path, violations: list[str]):
     status = git(root, "status", "--porcelain").stdout
     if status.strip():
@@ -320,6 +334,7 @@ def main() -> int:
     violations: list[str] = []
 
     check_learn(root, violations)
+    check_no_verify(root, violations)
     check_deferred(root, files, check_readme=args.full or phase >= 7, violations=violations, verbose=args.verbose)
     check_prompts(root, phase, violations)
     if args.phase_boundary:

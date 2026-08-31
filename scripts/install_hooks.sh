@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the Renovator protocol pre-commit hook (PLAN §10.4 / GW-4).
-# The hook runs the mechanical protocol checker on every commit; --no-verify is
+# The hook runs the mechanical protocol checker on every commit; the git no-verify
 # forbidden by the plan and never used by this repository.
 set -euo pipefail
 

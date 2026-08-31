@@ -63,8 +63,11 @@ Stdlib-only Python 3; exit 0 = clean, exit 1 = one line per violation. Rules:
    its fixtures contain literal LEARN blocks as test data). Each block: the five
    fields, ≥ 6 lines, unless a `LEARN-REF` stub (exempt; must reference an existing
    number).
-2. **Numbering & index.** Gapless from 001, no duplicates; `LEARN_INDEX.md` exactly
-   one live row per number with matching title and recomputed `file:line`.
+2. **Numbering & index.** No duplicates; `LEARN_INDEX.md` exactly one live row per
+   number with matching title and recomputed `file:line`. PLAN §10.1.8 pre-allocates
+   slots 001–016 whose placements land out of sequence across tasks (e.g. LEARN[006]
+   is Task 2.7, after LEARN[007] in Task 2.3), so transient gaps inside 1–16 are
+   permitted; numbers beyond 16 must be gapless; `--full` audits 1–16 completeness.
 3. **Deferred work 1:1.** `TODO(review) KL-NN` ↔ `KNOWN_LIMITATIONS.md` rows, both
    directions; pre-declared rows exempt from the marker side; README sentence
    requirement with `--full` or from Phase 7.

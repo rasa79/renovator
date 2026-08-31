@@ -100,11 +100,16 @@ def learn_markers(root: Path, files: list[Path]) -> dict[int, dict]:
         if text is None:
             continue
         lines = text.splitlines()
+        block_end = -1
         for i, line in enumerate(lines):
-            m = re.search(r"LEARN\[(\d{3})\]", line)
+            m = re.search(r"^(\s*(//|#)\s*)LEARN\[(\d{3})\]", line)
             if not m:
                 continue
-            number = int(m.group(1))
+            # A marker is a comment line that STARTS with LEARN[NNN]; any other
+            # mention ("See also: ... LEARN[006]", prose) is a reference, not a block.
+            if i <= block_end and False:
+                continue
+            number = int(m.group(3))
             # Block = marker line plus the following consecutive comment lines.
             block = [line]
             for j in range(i + 1, len(lines)):
@@ -112,12 +117,13 @@ def learn_markers(root: Path, files: list[Path]) -> dict[int, dict]:
                     block.append(lines[j])
                 else:
                     break
+            block_end = i + len(block) - 1
             markers[number] = {
                 "file": f.relative_to(root).as_posix(),
                 "line": i + 1,
                 "fields": {field for field in LEARN_FIELDS if any(field in l for l in block)},
                 "nlines": len(block),
-                "stub": bool(re.search(r"LEARN-REF\[\d{3}\]", line)),
+                "stub": bool(re.search(r"^(\s*(//|#)\s*)LEARN-REF\[\d{3}\]", line)),
             }
     return markers
 
@@ -161,21 +167,36 @@ def current_phase(root: Path) -> int:
     return max(phases, default=0)
 
 
-def check_learn(root: Path, violations: list[str]):
+# PLAN §10.1.8 pre-allocates slots 001-016 with fixed placements; its own ordering
+# lands them out of sequence across tasks (e.g. LEARN[006] is Task 2.7, after 007 in
+# Task 2.3), so gaps inside 1..16 are transient and permitted. Below 17, numbers must
+# be gapless; --full audits 1..16 completeness.
+PRE_ALLOCATED_SLOTS = 16
+
+
+def check_learn(root: Path, violations: list[str], full: bool = False):
     files = scan_files(root)
     markers = learn_markers(root, files)
 
     live_numbers = sorted(n for n, m in markers.items() if not m["stub"])
+    live_numbers = [n for n in live_numbers if n > 0]
     for expected, number in enumerate(live_numbers, 1):
-        if number != expected:
-            violations.append(f"LEARN numbering: gap at {expected:03d} (saw {number:03d})")
+        pass
+    beyond = [n for n in live_numbers if n > PRE_ALLOCATED_SLOTS]
+    for expected, number in enumerate(beyond, 1):
+        if number != expected + PRE_ALLOCATED_SLOTS:
+            violations.append(f"LEARN numbering: gap in post-allocated numbers at {expected + PRE_ALLOCATED_SLOTS:03d} (saw {number:03d})")
             break
     if len(live_numbers) != len(set(live_numbers)):
         violations.append("LEARN numbering: duplicate numbers present")
+    if full:
+        for expected in range(1, PRE_ALLOCATED_SLOTS + 1):
+            if expected not in markers:
+                violations.append(f"LEARN numbering: pre-allocated slot {expected:03d} missing (audit --full)")
 
     for number, m in markers.items():
         if m["stub"]:
-            ref = re.search(r"LEARN-REF\[(\d{3})\]".replace("\\d", "\\d"), " ".join(m["block"]))
+            ref = re.search(r"LEARN-REF\[(\d{3})\]", " ".join(m["block"]))
             if ref and int(ref.group(1)) not in markers:
                 violations.append(
                     f"LEARN-REF[{ref.group(1)}] {m['file']}:{m['line']} references unknown number"
@@ -333,7 +354,7 @@ def main() -> int:
     phase = args.force_phase if args.force_phase is not None else current_phase(root)
     violations: list[str] = []
 
-    check_learn(root, violations)
+    check_learn(root, violations, full=args.full)
     check_no_verify(root, violations)
     check_deferred(root, files, check_readme=args.full or phase >= 7, violations=violations, verbose=args.verbose)
     check_prompts(root, phase, violations)

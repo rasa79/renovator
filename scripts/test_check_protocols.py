@@ -67,7 +67,7 @@ class LearnRuleTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             fx = CheckerFixture(Path(td))
             fx.write("src/t/Test.kt", VALID_BLOCK)
-            fx.write("src/t/Test2.kt", VALID_BLOCK.replace("001", "003"))
+            fx.write("src/t/Test2.kt", VALID_BLOCK.replace("001", "019"))
             violations = []
             chk.check_learn(Path(td), violations)
             self.assertTrue(any("gap" in v for v in violations))

@@ -25,6 +25,7 @@
         <embabel.version>1.5.1</embabel.version>
         <jqwik.version>1.10.1</jqwik.version>
         <ktlint-maven-plugin.version>3.7.1</ktlint-maven-plugin.version>
+        <java-diff-utils.version>4.17</java-diff-utils.version>
     </properties>
 
     <dependencies>
@@ -46,6 +47,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Unified-diff parsing for Layer 2 (L2 applies diffs with a real library,
+             never regex — PLAN §7 L2 / LEARN[008]) -->
+        <dependency>
+            <groupId>io.github.java-diff-utils</groupId>
+            <artifactId>java-diff-utils</artifactId>
+            <version>${java-diff-utils.version}</version>
+        </dependency>
         <!-- YAML for the expected-outcome dataset (D13; ExpectedOutcome, Phase 1/6).
              Jackson 3 (tools.jackson.*) is the Boot 4 primary stack — use it, not the
              coexistence Jackson 2 artifacts some transitive dependencies still carry. -->

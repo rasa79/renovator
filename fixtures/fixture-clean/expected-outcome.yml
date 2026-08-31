@@ -1,0 +1,14 @@
+fixture: fixture-clean
+goal:
+  targets:
+    - groupId: org.apache.commons
+      artifactId: commons-lang3
+      fromVersion: "3.12.0"
+      toVersion: "3.14.0"
+  constraints: [NoSnapshots]
+expectedTerminalState: UpgradeComplete
+mustVisitStages: [Analyzing, Planning, Applying, Verifying]
+mustNotVisitStages: []
+maxAttempts: 6
+requiredArtifacts: [BuildResult]
+notes: happy path — zero breakage

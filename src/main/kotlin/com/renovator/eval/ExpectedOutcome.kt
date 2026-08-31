@@ -1,8 +1,7 @@
 package com.renovator.eval
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -69,7 +68,7 @@ data class ExpectedOutcome(
  * an out-of-range maxAttempts fail here (with the Jackson error), never during a run.
  */
 object ExpectedOutcomeLoader {
-    private val mapper = ObjectMapper(YAMLFactory()).registerKotlinModule()
+    private val mapper = YAMLMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     fun load(path: Path): ExpectedOutcome {
         require(Files.exists(path)) { "expected-outcome file not found: $path" }

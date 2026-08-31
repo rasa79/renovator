@@ -46,13 +46,15 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- YAML for the expected-outcome dataset (D13; ExpectedOutcome, Phase 1/6) -->
+        <!-- YAML for the expected-outcome dataset (D13; ExpectedOutcome, Phase 1/6).
+             Jackson 3 (tools.jackson.*) is the Boot 4 primary stack — use it, not the
+             coexistence Jackson 2 artifacts some transitive dependencies still carry. -->
         <dependency>
-            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <groupId>tools.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-yaml</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.module</groupId>
+            <groupId>tools.jackson.module</groupId>
             <artifactId>jackson-module-kotlin</artifactId>
         </dependency>
 

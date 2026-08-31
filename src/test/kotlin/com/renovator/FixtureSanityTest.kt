@@ -148,4 +148,41 @@ class FixtureSanityTest {
             tmp.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun `fixture-no-path baseline builds green`() {
+        val (exit, output) = runMaven("fixture-no-path", "verify")
+        assertEquals(0, exit, "fixture-no-path baseline must build green; output:\n$output")
+    }
+
+    @Test
+    fun `target version 99-99-99 does not exist on central`() {
+        // §8.4: the fixture's target must 404 by construction, so Layer-3 rejection is
+        // deterministic rather than a network flake the planner could accidentally pass.
+        val client =
+            java.net.http.HttpClient
+                .newBuilder()
+                .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+                .build()
+        val request =
+            java.net.http.HttpRequest
+                .newBuilder()
+                .uri(
+                    java.net.URI.create(
+                        "https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/99.99.99/commons-lang3-99.99.99.pom",
+                    ),
+                ).method(
+                    "HEAD",
+                    java.net.http.HttpRequest.BodyPublishers
+                        .noBody(),
+                ).build()
+        val status =
+            client
+                .send(
+                    request,
+                    java.net.http.HttpResponse.BodyHandlers
+                        .discarding(),
+                ).statusCode()
+        assertEquals(404, status, "99.99.99 must never exist on Maven Central")
+    }
 }

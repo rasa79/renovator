@@ -26,6 +26,7 @@
         <jqwik.version>1.10.1</jqwik.version>
         <ktlint-maven-plugin.version>3.7.1</ktlint-maven-plugin.version>
         <java-diff-utils.version>4.17</java-diff-utils.version>
+        <maven-model.version>3.9.16</maven-model.version>
     </properties>
 
     <dependencies>
@@ -47,6 +48,17 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Maven Model API + ComparableVersion for Layer 3 (§3 pins; 4.0.0-rc-* excluded) -->
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-model</artifactId>
+            <version>${maven-model.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-artifact</artifactId>
+            <version>${maven-model.version}</version>
+        </dependency>
         <!-- Unified-diff parsing for Layer 2 (L2 applies diffs with a real library,
              never regex — PLAN §7 L2 / LEARN[008]) -->
         <dependency>

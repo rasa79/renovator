@@ -1,8 +1,8 @@
 package com.renovator.validation
 
+import com.github.difflib.UnifiedDiffUtils
 import com.renovator.domain.CodePatch
 import com.renovator.domain.ValidationRejection
-import com.github.difflib.UnifiedDiffUtils
 
 // LEARN[008] A real diff library, never regex: what unified-diff context lines are FOR
 // Why this way: a unified diff is a machine-readable contract between "what the code
@@ -25,12 +25,15 @@ import com.github.difflib.UnifiedDiffUtils
 //   current file, and a failed type check is an observation, not a retry.
 // See also: PLAN §7 L2, LEARN[007] (normalize first), LEARN[006] (validation seals)
 class DiffApplyValidator {
-
     /** Result of applying a patch: the applied content, or a typed rejection. */
     sealed interface ApplyResult {
-        data class Applied(val content: String) : ApplyResult
+        data class Applied(
+            val content: String,
+        ) : ApplyResult
 
-        data class Rejected(val rejection: ValidationRejection) : ApplyResult
+        data class Rejected(
+            val rejection: ValidationRejection,
+        ) : ApplyResult
     }
 
     /**
@@ -43,7 +46,10 @@ class DiffApplyValidator {
      * // multi-file diffs, which java-diff-utils parses as malformed input) are
      // rejected by scope — the plan pre-declared this cut in §12/KL-10.
      */
-    fun apply(patch: CodePatch, currentContent: String): ApplyResult {
+    fun apply(
+        patch: CodePatch,
+        currentContent: String,
+    ): ApplyResult {
         val diff = patch.unifiedDiff
         if (diff.contains("Binary files") && diff.contains("differ")) {
             return rejected("binary-by-scope", "binary diffs are rejected by scope", firstLine(diff))
@@ -56,11 +62,12 @@ class DiffApplyValidator {
         }
 
         val lines = diff.lines()
-        val parsed = try {
-            UnifiedDiffUtils.parseUnifiedDiff(lines)
-        } catch (e: Exception) {
-            return rejected("malformed-diff", "unified diff could not be parsed: ${e.message}", firstLine(diff))
-        }
+        val parsed =
+            try {
+                UnifiedDiffUtils.parseUnifiedDiff(lines)
+            } catch (e: Exception) {
+                return rejected("malformed-diff", "unified diff could not be parsed: ${e.message}", firstLine(diff))
+            }
 
         val deltas = parsed.deltas
         if (deltas.isEmpty()) {
@@ -78,7 +85,12 @@ class DiffApplyValidator {
         // The diff's target file must agree with the patch's filePath (a path the
         // whitelist approved but the diff writes elsewhere is a mismatch).
         val targetPathLine = lines.lastOrNull { it.startsWith("+++ ") } ?: ""
-        val targetPath = targetPathLine.substring(4).trim().removePrefix("b/").removePrefix("a/")
+        val targetPath =
+            targetPathLine
+                .substring(4)
+                .trim()
+                .removePrefix("b/")
+                .removePrefix("a/")
         if (targetPath.isNotBlank() && targetPath != patch.filePath.replace('\\', '/')) {
             return rejected(
                 "path-mismatch",
@@ -116,7 +128,11 @@ class DiffApplyValidator {
         return ApplyResult.Applied(output.joinToString("\n"))
     }
 
-    private fun rejected(check: String, reason: String, offending: String): ApplyResult.Rejected =
+    private fun rejected(
+        check: String,
+        reason: String,
+        offending: String,
+    ): ApplyResult.Rejected =
         ApplyResult.Rejected(
             ValidationRejection(checkName = "L2:$check", reason = reason, offendingContent = offending),
         )

@@ -1,28 +1,35 @@
 package com.renovator.validation
 
-import com.renovator.domain.CodePatch
 import com.github.difflib.DiffUtils
 import com.github.difflib.UnifiedDiffUtils
+import com.renovator.domain.CodePatch
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class DiffApplyValidatorTest {
-
     private val validator = DiffApplyValidator()
 
     private val filePath = "src/main/java/com/example/A.java"
 
-    private fun diffBetween(original: String, modified: String): String =
+    private fun diffBetween(
+        original: String,
+        modified: String,
+    ): String =
         UnifiedDiffUtils
             .generateUnifiedDiff("a/$filePath", "b/$filePath", original.lines(), DiffUtils.diff(original.lines(), modified.lines()), 3)
             .joinToString("\n")
 
-    private fun patch(diff: String, filePath: String = this.filePath) =
-        CodePatch(filePath, diff, "test")
+    private fun patch(
+        diff: String,
+        filePath: String = this.filePath,
+    ) = CodePatch(filePath, diff, "test")
 
-    private fun applied(patch: CodePatch, content: String): DiffApplyValidator.ApplyResult = validator.apply(patch, content)
+    private fun applied(
+        patch: CodePatch,
+        content: String,
+    ): DiffApplyValidator.ApplyResult = validator.apply(patch, content)
 
     @Test
     fun `accepts diff that applies cleanly`() {

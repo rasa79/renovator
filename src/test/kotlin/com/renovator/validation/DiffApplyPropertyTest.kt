@@ -1,8 +1,8 @@
 package com.renovator.validation
 
-import com.renovator.domain.CodePatch
 import com.github.difflib.DiffUtils
 import com.github.difflib.UnifiedDiffUtils
+import com.renovator.domain.CodePatch
 import net.jqwik.api.Arbitraries
 import net.jqwik.api.ForAll
 import net.jqwik.api.Property
@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
  * line positions and random perturbations).
  */
 class DiffApplyPropertyTest {
-
     private val validator = DiffApplyValidator()
 
     private val original = "class A {\n    int x;\n\n    int method(String s) {\n        return s.length() + x;\n    }\n}\n"
@@ -27,9 +26,10 @@ class DiffApplyPropertyTest {
         @ForAll("mutations") mutation: Int,
     ) {
         val modified = original.replace("int x;", "int x;\n    int y;")
-        val diff = UnifiedDiffUtils
-            .generateUnifiedDiff("a/A.java", "b/A.java", original.lines(), DiffUtils.diff(original.lines(), modified.lines()), 3)
-            .joinToString("\n")
+        val diff =
+            UnifiedDiffUtils
+                .generateUnifiedDiff("a/A.java", "b/A.java", original.lines(), DiffUtils.diff(original.lines(), modified.lines()), 3)
+                .joinToString("\n")
         val lines = diff.lines()
         val index = if (lines.isEmpty()) 0 else Math.floorMod(mutation, lines.size)
         // Perturb the chosen line: change a context line's leading space to something
@@ -52,6 +52,5 @@ class DiffApplyPropertyTest {
     }
 
     @Provide
-    fun mutations(): IntegerArbitrary =
-        Arbitraries.integers().between(0, 10_000)
+    fun mutations(): IntegerArbitrary = Arbitraries.integers().between(0, 10_000)
 }

@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 //   the LLM context is finite: the planner reads head+tail, the judge keeps the full
 //   log on disk; truncatedBytes makes "we cut something" explicit, never silent.
 // See also: PLAN §8.5, PLAN D7, WorkspaceCopier.kt, Excerpt.kt
-class DockerSandboxRunner(
+open class DockerSandboxRunner( // open: test seam (PLAN Task 1.6)
     private val sandbox: RenovatorProperties.Sandbox,
     /** Test-only seam: the IT substitutes a stub docker that sleeps (Documented seam,
      * Plan Task 1.6: "uses the runner's internal command hook with sleep 600"). */
@@ -47,7 +47,7 @@ class DockerSandboxRunner(
      * Hard timeout: the container is `docker kill`ed, the CLI process destroyed, and a
      * typed `BuildResult(success=false, failedGoals=["<timeout>"])` is returned.
      */
-    fun runBuild(
+    open fun runBuild( // open: test seam documented in PLAN Task 1.6 (command hook)
         workspace: WorkspaceRef,
         goals: List<String>,
         timeout: Duration,

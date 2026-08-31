@@ -33,6 +33,9 @@ data class ValidationRejection(
 data class CompileCheckResult(
     val success: Boolean,
     val errors: List<CompileError>,
+    // REFINEMENT (phase-2 report): distinguishes "not run" (dry-run-compile=off)
+    // from "ran and passed"; PLAN §5 lists success+errors only.
+    val skipped: Boolean = false,
 )
 
 data class TestFailure(

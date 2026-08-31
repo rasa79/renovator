@@ -105,7 +105,12 @@ class DiffApplyValidator {
         var cursor = 0
         val output = mutableListOf<String>()
         for ((index, delta) in deltas.withIndex()) {
-            val start = (delta.source.position - 1).coerceAtLeast(0)
+            // EMPIRICAL (java-diff-utils 4.17, verified by probe): for a PARSED
+            // unified diff, delta.source.position is the 0-based index of the hunk's
+            // first line in the original (the rendered @@ -a,b header is a+1). The
+            // un-parsed DiffUtils.diff() deltas use different semantics (no context,
+            // 1-based change position) — L2 only ever sees parsed input.
+            val start = delta.source.position.coerceAtLeast(0)
             if (start < cursor) {
                 return rejected("hunk-${index + 1}", "hunk overlaps a previously applied region", "")
             }

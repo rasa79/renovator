@@ -22,3 +22,55 @@ data class CompileError(
     val column: Int,
     val message: String,
 )
+
+/** A typed validation failure, placed on the blackboard to inform replanning. */
+data class ValidationRejection(
+    val checkName: String,
+    val reason: String,
+    val offendingContent: String,
+)
+
+data class CompileCheckResult(
+    val success: Boolean,
+    val errors: List<CompileError>,
+)
+
+data class TestFailure(
+    val name: String,
+    val message: String,
+)
+
+data class TestResult(
+    val passed: Int,
+    val failed: Int,
+    val failures: List<TestFailure>,
+)
+
+data class UpgradeBlocker(
+    val summary: String,
+    val attempts: List<AttemptRecord>,
+    val humanQuestion: String,
+) {
+    init {
+        require(attempts.isNotEmpty()) { "UpgradeBlocker needs a non-empty attempt history" }
+        require(humanQuestion.isNotBlank()) { "UpgradeBlocker needs a human question" }
+    }
+}
+
+data class AttemptRecord(
+    val planRationale: String,
+    val rejectedAt: String?,
+    val buildFailedGoals: List<String>,
+    val validationRejections: List<ValidationRejection>,
+)
+
+data class UpgradeComplete(
+    val appliedSteps: List<PlanStep>,
+    val finalBuild: BuildResult,
+    val durationMs: Long,
+)
+
+data class HumanDecision(
+    val approved: Boolean,
+    val comment: String,
+)

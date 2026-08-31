@@ -1,0 +1,15 @@
+fixture: fixture-transitive-conflict
+goal:
+  targets:
+    - groupId: com.google.guava
+      artifactId: guava
+      fromVersion: "31.0.1-jre"
+      toVersion: "33.4.8-jre"
+  constraints: [NoSnapshots]
+expectedTerminalState: UpgradeComplete
+mustVisitStages: [Analyzing, Planning, Applying, Verifying, Repairing]
+mustNotVisitStages: []
+maxAttempts: 12
+requiredArtifacts: [BuildResult]
+notes: direct bump fails dependencyConvergence naming guava; two-hop plan (MANAGEMENT pin then DIRECT bump) resolves.
+  Coordinates adjusted per PLAN 8.3 set C (guice pins guava 31.0.1-jre — drift note in phase-1 report).

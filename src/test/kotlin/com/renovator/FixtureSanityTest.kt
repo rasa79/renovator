@@ -111,4 +111,41 @@ class FixtureSanityTest {
             tmp.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun `fixture-transitive-conflict baseline validates green`() {
+        val (exit, output) = runMaven("fixture-transitive-conflict", "validate")
+        assertEquals(0, exit, "baseline validate must be green (converged); output:\n$output")
+    }
+
+    @Test
+    fun `direct bump deterministically fails convergence naming guava`() {
+        // §8.3 mandatory verification: on a temp copy, bump the direct guava version
+        // only; validate must fail naming guava (the judge must be able to say "no").
+        val tmp = Files.createTempDirectory("renovator-conflict-bump")
+        try {
+            copyTree(Path.of("fixtures/fixture-transitive-conflict"), tmp)
+            val pom = tmp.resolve("pom.xml")
+            Files.writeString(
+                pom,
+                Files.readString(pom).replace("<version>31.0.1-jre</version>", "<version>33.4.8-jre</version>"),
+            )
+            val process =
+                ProcessBuilder(
+                    listOf("mvn", "-q", "-f", tmp.resolve("pom.xml").toString(), "validate"),
+                ).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            val exit = process.waitFor()
+            assertTrue(exit != 0, "the direct bump must fail validate")
+            assertTrue(
+                output.contains("Dependency convergence error") && output.contains("guava"),
+                "the enforcer must name the convergence error and guava; output was:\n$output",
+            )
+            println(
+                "BUMP-OUTPUT:\n${output.lines().filter { it.contains("guava") || it.contains("convergence") }.take(6).joinToString("\n")}",
+            )
+        } finally {
+            tmp.toFile().deleteRecursively()
+        }
+    }
 }

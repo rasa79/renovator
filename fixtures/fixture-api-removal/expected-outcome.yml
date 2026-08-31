@@ -1,0 +1,14 @@
+fixture: fixture-api-removal
+goal:
+  targets:
+    - groupId: org.apache.commons
+      artifactId: commons-lang3
+      fromVersion: "2.6"
+      toVersion: "3.14.0"
+  constraints: [NoSnapshots]
+expectedTerminalState: UpgradeComplete
+mustVisitStages: [Analyzing, Planning, Applying, Verifying, Repairing]
+mustNotVisitStages: []
+maxAttempts: 10
+requiredArtifacts: [BuildResult, CompileCheckResult]
+notes: compile failure names escapeSql; one repair loop patches the call; groupId/artifactId change

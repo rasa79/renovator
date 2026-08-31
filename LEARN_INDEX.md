@@ -11,5 +11,6 @@ are deleted comments kept for numbering history; numbers are never reused.
 | 003 | Judge before judged: why the fixtures land before the agent code | fixtures/README.md:10 | deterministic judge first |
 | 008 | A real diff library, never regex: what unified-diff context lines are FOR | src/main/kotlin/com/renovator/validation/DiffApplyValidator.kt:7 | real diff library, no regex |
 | 007 | Normalize-then-match: why matching before normalizing is the classic whitelist bypass | src/main/kotlin/com/renovator/validation/PathWhitelistValidator.kt:8 | normalize-then-match whitelist |
+| 006 | The enforcement boundary: validation is code, not prompts | src/main/kotlin/com/renovator/execution/UpgradeExecutor.kt:16 | enforcement-boundary principle |
 | 005 | Kotlin for a Java engineer: the proposal types are the contract | src/main/kotlin/com/renovator/domain/Proposals.kt:8 | kotlin data-class/sealed contract |
 | 004 | Reversibility: throwaway container + pristine copy; Docker CLI over Testcontainers | src/main/kotlin/com/renovator/execution/DockerSandboxRunner.kt:9 | sandbox reversibility + Excerpt budget |

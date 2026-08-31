@@ -8,3 +8,4 @@ are deleted comments kept for numbering history; numbers are never reused.
 |---|---|---|---|
 | 001 | One client abstraction, two providers: the OpenAI-compatible trick | src/main/kotlin/com/renovator/config/LlmProviderConfig.kt:9 | dual-provider env-only switch |
 | 002 | The protocol lint is mechanical and load-bearing | scripts/check_protocols.py:24 | enforced-by-hook protocols |
+| 003 | Judge before judged: why the fixtures land before the agent code | fixtures/README.md:10 | deterministic judge first |

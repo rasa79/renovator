@@ -46,6 +46,16 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- YAML for the expected-outcome dataset (D13; ExpectedOutcome, Phase 1/6) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.module</groupId>
+            <artifactId>jackson-module-kotlin</artifactId>
+        </dependency>
+
         <!-- Embabel agent core (D1, D2) -->
         <dependency>
             <groupId>com.embabel.agent</groupId>

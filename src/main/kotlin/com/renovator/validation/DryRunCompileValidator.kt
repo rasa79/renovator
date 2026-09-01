@@ -48,6 +48,26 @@ class DryRunCompileValidator(
         }
     }
 
+    /** Plan variant: stage the WHOLE validated plan, then dry-run compile. */
+    fun checkPlan(
+        validatedPlan: com.renovator.validation.ValidatedPlan,
+        sourceTree: Path,
+    ): CompileCheckResult {
+        if (validation.dryRunCompile == RenovatorProperties.DryRunCompileMode.OFF) {
+            return CompileCheckResult(success = true, errors = emptyList(), skipped = true)
+        }
+        val workspace = copier.copy(sourceTree)
+        return try {
+            com.renovator.execution
+                .UpgradeExecutor()
+                .apply(validatedPlan, workspace)
+            val build = runner.runBuild(workspace, listOf("compile"), Duration.ofMinutes(10))
+            CompileCheckResult(success = build.success, errors = CompileErrorParser.parse(build.log.head + "\n" + build.log.tail))
+        } finally {
+            workspace.path.toFile().deleteRecursively()
+        }
+    }
+
     private fun compileWithPatch(
         patch: CodePatch,
         sourceTree: Path,

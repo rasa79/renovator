@@ -26,10 +26,6 @@ class LlmSmokeService(
      */
     fun ping(): PingResponse {
         val prompt = "Reply with JSON: {\"answer\": \"pong\"}. Do not add anything else."
-        // TODO(review) KL-12: Embabel's LlmDataBindingProperties retried a non-retryable
-        // quota error (429 "no credits remaining") ~10x over ~24s before failing. When
-        // Renovator owns an LLM-call wrapper (Phase 3 LLM actions), map provider errors:
-        // 429-quota -> fail fast; 429-rate -> retry with backoff (see KNOWN_LIMITATIONS.md).
         return ai.withDefaultLlm().createObject<PingResponse>(prompt)
     }
 }

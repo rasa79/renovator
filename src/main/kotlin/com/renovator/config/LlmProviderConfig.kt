@@ -53,6 +53,7 @@ class LlmProviderConfig {
             model: String,
             baseUrl: String?,
             apiKey: String?,
+            plannerRole: String = "planner",
         ): Map<String, String> {
             if (provider == "ollama") {
                 val base =
@@ -67,9 +68,12 @@ class LlmProviderConfig {
                     "embabel.agent.platform.models.openai.custom.api-key" to (apiKey?.takeIf { it.isNotBlank() } ?: "ollama"),
                     "embabel.agent.platform.models.openai.custom.models" to model,
                     "embabel.models.default-llm" to model,
+                    // Role mapping (C-8): `withLlmByRole("planner")` resolves via this.
+                    "embabel.models.llms.$plannerRole" to model,
                 )
             }
             val out = mutableMapOf<String, String>("embabel.models.default-llm" to model)
+            out["embabel.models.llms.$plannerRole"] = model
             baseUrl?.takeIf { it.isNotBlank() }?.let {
                 out["embabel.agent.platform.models.openai.base-url"] = it
             }
@@ -97,7 +101,8 @@ class LlmEnvironmentPostProcessor : EnvironmentPostProcessor {
         val model = environment.getProperty("renovator.llm.model", "gpt-4.1-mini")
         val baseUrl = environment.getProperty("renovator.llm.base-url")
         val apiKey = environment.getProperty("renovator.llm.api-key")
-        val bindings = LlmProviderConfig.embabelBindings(provider, model, baseUrl, apiKey)
+        val plannerRole = environment.getProperty("renovator.llm.planner-role", "planner")
+        val bindings = LlmProviderConfig.embabelBindings(provider, model, baseUrl, apiKey, plannerRole)
         if (bindings.isNotEmpty()) {
             environment.propertySources.addFirst(MapPropertySource("renovator-llm-bindings", bindings))
         }

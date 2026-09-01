@@ -5,6 +5,7 @@ import com.renovator.execution.TreeHasher
 import com.renovator.execution.UpgradeExecutor
 import com.renovator.execution.WorkspaceCopier
 import com.renovator.execution.WorkspaceSnapshot
+import com.renovator.validation.ValidatedPatch
 import com.renovator.validation.ValidatedPlan
 
 /**
@@ -17,12 +18,15 @@ import com.renovator.validation.ValidatedPlan
 object ApplyValidatedChangesAction {
     private val executor: UpgradeExecutor = UpgradeExecutor()
     private val copier: WorkspaceCopier = WorkspaceCopier()
+
     fun apply(
         plan: ValidatedPlan,
         runRequest: RunRequest,
+        patch: ValidatedPatch? = null,
     ): WorkspaceSnapshot {
         val ref = copier.copy(runRequest.repoPath)
         executor.apply(plan, ref)
+        patch?.let { executor.apply(it, ref) }
         return WorkspaceSnapshot(ref = ref, sourceHash = TreeHasher.of(runRequest.repoPath))
     }
 }

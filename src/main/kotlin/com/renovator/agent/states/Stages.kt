@@ -1,7 +1,7 @@
 package com.renovator.agent.states
 
-import com.embabel.agent.api.annotation.Action
 import com.embabel.agent.api.annotation.AchievesGoal
+import com.embabel.agent.api.annotation.Action
 import com.embabel.agent.api.annotation.State
 import com.embabel.agent.api.common.OperationContext
 import com.embabel.agent.core.ReplanRequestedException
@@ -16,6 +16,8 @@ import com.renovator.agent.actions.RunBuildAction
 import com.renovator.agent.actions.ValidatePatchAction
 import com.renovator.agent.actions.ValidatePlanAction
 import com.renovator.audit.AgentTrace
+import com.renovator.audit.RunAudit
+import com.renovator.audit.TrajectoryEvent
 import com.renovator.domain.BuildDiagnosis
 import com.renovator.domain.BuildResult
 import com.renovator.domain.CodePatch
@@ -28,6 +30,7 @@ import com.renovator.domain.UpgradeGoal
 import com.renovator.domain.UpgradePlan
 import com.renovator.domain.WorkspaceVerdict
 import com.renovator.execution.WorkspaceSnapshot
+import com.renovator.validation.CompileErrorParser
 import com.renovator.validation.ValidatedPatch
 import com.renovator.validation.ValidatedPlan
 
@@ -66,7 +69,6 @@ data class Analyzing(
     val goal: UpgradeGoal,
     val runRequest: RunRequest,
 ) : UpgradeStage {
-
     @Action(cost = 0.05, description = "Analyze the target repository (pom facts)")
     fun analyzeRepository(): Planning {
         AgentTrace.record("analyzeRepository")
@@ -74,7 +76,7 @@ data class Analyzing(
             goal = goal,
             runRequest = runRequest,
             repoModel = AnalyzeRepositoryAction.analyze(runRequest),
-        )
+        ).also { RunAudit.emit(TrajectoryEvent.StageEntered("Planning")) }
     }
 }
 
@@ -83,17 +85,43 @@ data class Planning(
     val runRequest: RunRequest,
     val repoModel: RepoModel,
 ) : UpgradeStage {
-
     /** LLM proposal: returns the plan object (no transition — stays in Planning). */
     @Action(cost = 0.30, description = "Propose an upgrade plan (LLM, typed binding)")
     fun proposeUpgradePlan(context: OperationContext): UpgradePlan {
         AgentTrace.record("proposeUpgradePlan")
         return when (
-            val outcome = com.renovator.agent.llm.LlmChannel.actions.proposePlan(context, repoModel, goal)
+            val outcome =
+                com.renovator.agent.llm.LlmChannel.actions
+                    .proposePlan(context, repoModel, goal)
         ) {
-            is LlmOutcome.Accepted -> outcome.value
+            is LlmOutcome.Accepted -> {
+                RunAudit.emit(
+                    TrajectoryEvent.PlanAttempted(
+                        rationale = outcome.value.rationale,
+                        stepCount = outcome.value.steps.size,
+                    ),
+                )
+                RunAudit.emit(
+                    TrajectoryEvent.LlmCall(
+                        action = "proposePlan",
+                        attempts = outcome.attempts.size,
+                        rejected = false,
+                        reason = "",
+                    ),
+                )
+                outcome.value
+            }
+
             is LlmOutcome.Rejected -> {
                 AgentTrace.record("proposeUpgradePlan:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                RunAudit.emit(
+                    TrajectoryEvent.LlmCall(
+                        action = "proposePlan",
+                        attempts = outcome.attempts.size,
+                        rejected = true,
+                        reason = outcome.rejection.reason,
+                    ),
+                )
                 throw ReplanRequestedException(outcome.rejection.reason)
             }
         }
@@ -105,11 +133,38 @@ data class Planning(
         AgentTrace.record("validatePlan")
         return when (
             val outcome =
-                ValidatePlanAction.validate(plan, runRequest.repoPath.resolve("pom.xml").toFile().readText())
+                ValidatePlanAction.validate(
+                    plan,
+                    runRequest.repoPath
+                        .resolve("pom.xml")
+                        .toFile()
+                        .readText(),
+                )
         ) {
-            is ValidatePlanAction.Outcome.Accepted -> Applying(goal, runRequest, repoModel, outcome.plan)
+            is ValidatePlanAction.Outcome.Accepted -> {
+                Applying(goal, runRequest, repoModel, outcome.plan).also {
+                    RunAudit.emit(
+                        TrajectoryEvent.ValidationOutcome(
+                            checkName =
+                                outcome.plan.proof.checkNames
+                                    .joinToString(","),
+                            accepted = true,
+                            reason = "",
+                        ),
+                    )
+                    RunAudit.emit(TrajectoryEvent.StageEntered("Applying"))
+                }
+            }
+
             is ValidatePlanAction.Outcome.Rejected -> {
                 AgentTrace.record("validatePlan:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                RunAudit.emit(
+                    TrajectoryEvent.ValidationOutcome(
+                        checkName = outcome.rejection.checkName,
+                        accepted = false,
+                        reason = outcome.rejection.reason,
+                    ),
+                )
                 throw ReplanRequestedException(outcome.rejection.reason)
             }
         }
@@ -123,12 +178,17 @@ data class Applying(
     val validatedPlan: ValidatedPlan,
     val pendingPatch: ValidatedPatch? = null,
 ) : UpgradeStage {
-
     @Action(cost = 0.10, description = "Apply validated changes to a pristine workspace copy")
     fun applyValidatedChanges(): Verifying {
         AgentTrace.record("applyValidatedChanges")
-        val snapshot = ApplyValidatedChangesAction.apply(validatedPlan, runRequest)
-        return Verifying(goal, runRequest, repoModel, validatedPlan, snapshot)
+        // The repair bundle: the validated plan (pom) plus any validated patch (code).
+        // ApplyValidatedChangesAction stages the plan on a pristine copy; the patch is
+        // applied to the SAME copy by the executor's patch path. The source tree is
+        // never mutated (D7) — the copy is.
+        val snapshot = ApplyValidatedChangesAction.apply(validatedPlan, runRequest, pendingPatch)
+        return Verifying(goal, runRequest, repoModel, validatedPlan, snapshot).also {
+            RunAudit.emit(TrajectoryEvent.StageEntered("Verifying"))
+        }
     }
 }
 
@@ -139,17 +199,27 @@ data class Verifying(
     val validatedPlan: ValidatedPlan,
     val snapshot: WorkspaceSnapshot,
 ) : UpgradeStage {
-
     /** The judge's verdict: green -> Done; red -> Repairing. The loop transition
      *  (Verifying <-> Repairing) requires clearBlackboard = true. */
     @Action(cost = 0.60, description = "Run the sandboxed build and tests", clearBlackboard = true)
     fun runBuild(): UpgradeStage {
         AgentTrace.record("runBuild")
         val verdict: WorkspaceVerdict = RunBuildAction.runBuild(snapshot.ref)
+        RunAudit.emit(
+            TrajectoryEvent.BuildObserved(
+                success = verdict.build.success,
+                failedGoals = verdict.build.failedGoals,
+                durationMs = verdict.build.durationMs,
+            ),
+        )
         return if (verdict.build.success && verdict.tests.failed == 0) {
-            Done(goal, runRequest, validatedPlan, verdict)
+            Done(goal, runRequest, validatedPlan, verdict).also {
+                RunAudit.emit(TrajectoryEvent.StageEntered("Done"))
+            }
         } else {
-            Repairing(goal, runRequest, repoModel, validatedPlan, snapshot, verdict, emptyList())
+            Repairing(goal, runRequest, repoModel, validatedPlan, snapshot, verdict, emptyList()).also {
+                RunAudit.emit(TrajectoryEvent.StageEntered("Repairing"))
+            }
         }
     }
 
@@ -169,26 +239,99 @@ data class Repairing(
     val failedVerdict: WorkspaceVerdict,
     val attempts: List<com.renovator.domain.AttemptRecord>,
 ) : UpgradeStage {
-
     @Action(cost = 0.30, description = "Diagnose a failed build (LLM, typed binding)")
     fun diagnoseFailure(context: OperationContext): BuildDiagnosis {
         AgentTrace.record("diagnoseFailure")
-        return when (val outcome = com.renovator.agent.llm.LlmChannel.actions.diagnoseFailure(context, failedVerdict.build)) {
-            is LlmOutcome.Accepted -> outcome.value
+        return when (
+            val outcome =
+                com.renovator.agent.llm.LlmChannel.actions
+                    .diagnoseFailure(context, failedVerdict.build)
+        ) {
+            is LlmOutcome.Accepted -> {
+                RunAudit.emit(
+                    TrajectoryEvent.ProposalReceived(
+                        kind = "BuildDiagnosis",
+                        summary = outcome.value.rootCauses.joinToString("; ") { it.symbolOrArtifact },
+                    ),
+                )
+                RunAudit.emit(
+                    TrajectoryEvent.LlmCall(
+                        action = "diagnoseFailure",
+                        attempts = outcome.attempts.size,
+                        rejected = false,
+                        reason = "",
+                    ),
+                )
+                outcome.value
+            }
+
             is LlmOutcome.Rejected -> {
                 AgentTrace.record("diagnoseFailure:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                RunAudit.emit(
+                    TrajectoryEvent.LlmCall(
+                        action = "diagnoseFailure",
+                        attempts = outcome.attempts.size,
+                        rejected = true,
+                        reason = outcome.rejection.reason,
+                    ),
+                )
                 throw ReplanRequestedException(outcome.rejection.reason)
             }
         }
     }
 
     @Action(cost = 0.30, description = "Propose a code patch (LLM, typed binding)")
-    fun proposePatch(diagnosis: BuildDiagnosis, context: OperationContext): CodePatch {
+    fun proposePatch(
+        diagnosis: BuildDiagnosis,
+        context: OperationContext,
+    ): CodePatch {
         AgentTrace.record("proposePatch")
-        return when (val outcome = com.renovator.agent.llm.LlmChannel.actions.proposePatch(context, diagnosis, runRequest.repoPath.toFile().readText())) {
-            is LlmOutcome.Accepted -> outcome.value
+        // The patch targets the workspace COPY the failed build was run on — its
+        // current content is the only truthful context for the repair diff (D7):
+        // the sandbox mounts the copy at /work, so the javac diagnostic's absolute
+        // path is relativized against the mount point first.
+        val errors = CompileErrorParser.parse(failedVerdict.build.log.head + "\n" + failedVerdict.build.log.tail)
+        val failing =
+            errors.firstOrNull()?.filePath?.removePrefix(com.renovator.execution.DockerSandboxRunner.WORK_MOUNT + "/")
+                ?: throw ReplanRequestedException("no javac diagnostic in the failed build log to name the patch target")
+        val fileContent =
+            snapshot.ref.path
+                .resolve(failing)
+                .toFile()
+                .readText()
+        return when (
+            val outcome =
+                com.renovator.agent.llm.LlmChannel.actions
+                    .proposePatch(context, diagnosis, fileContent)
+        ) {
+            is LlmOutcome.Accepted -> {
+                RunAudit.emit(
+                    TrajectoryEvent.ProposalReceived(
+                        kind = "CodePatch",
+                        summary = outcome.value.justification,
+                    ),
+                )
+                RunAudit.emit(
+                    TrajectoryEvent.LlmCall(
+                        action = "proposePatch",
+                        attempts = outcome.attempts.size,
+                        rejected = false,
+                        reason = "",
+                    ),
+                )
+                outcome.value
+            }
+
             is LlmOutcome.Rejected -> {
                 AgentTrace.record("proposePatch:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                RunAudit.emit(
+                    TrajectoryEvent.LlmCall(
+                        action = "proposePatch",
+                        attempts = outcome.attempts.size,
+                        rejected = true,
+                        reason = outcome.rejection.reason,
+                    ),
+                )
                 throw ReplanRequestedException(outcome.rejection.reason)
             }
         }
@@ -198,10 +341,30 @@ data class Repairing(
     fun validatePatch(patch: CodePatch): Applying {
         AgentTrace.record("validatePatch")
         return when (val outcome = ValidatePatchAction.validate(patch, runRequest)) {
-            is ValidatePatchAction.Outcome.Accepted ->
-                Applying(goal, runRequest, repoModel, validatedPlan, pendingPatch = outcome.patch)
+            is ValidatePatchAction.Outcome.Accepted -> {
+                RunAudit.emit(
+                    TrajectoryEvent.ValidationOutcome(
+                        checkName =
+                            outcome.patch.proof.checkNames
+                                .joinToString(","),
+                        accepted = true,
+                        reason = "",
+                    ),
+                )
+                Applying(goal, runRequest, repoModel, validatedPlan, pendingPatch = outcome.patch).also {
+                    RunAudit.emit(TrajectoryEvent.StageEntered("Applying"))
+                }
+            }
+
             is ValidatePatchAction.Outcome.Rejected -> {
                 AgentTrace.record("validatePatch:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                RunAudit.emit(
+                    TrajectoryEvent.ValidationOutcome(
+                        checkName = outcome.rejection.checkName,
+                        accepted = false,
+                        reason = outcome.rejection.reason,
+                    ),
+                )
                 throw ReplanRequestedException(outcome.rejection.reason)
             }
         }
@@ -213,12 +376,12 @@ data class Blocked(
     val runRequest: RunRequest,
     val blocker: UpgradeBlocker,
 ) : UpgradeStage {
-
     /** Escalation: parks the process in WAITING with a HumanDecision form (C-3/C-6;
      *  the REST layer submits the decision — Phase 5). */
     @Action(cost = 0.00, description = "Escalate to a human when plan space is exhausted", pre = ["approvalGateArmed"])
     fun requestHumanDecision(): HumanDecision {
         AgentTrace.record("requestHumanDecision")
+        RunAudit.emit(TrajectoryEvent.Escalated(question = blocker.humanQuestion))
         return com.embabel.agent.core.hitl.WaitFor.formSubmission(
             "Plan space exhausted: ${blocker.humanQuestion} ($blocker)",
             HumanDecision::class.java,
@@ -238,11 +401,11 @@ data class Done(
     val validatedPlan: ValidatedPlan,
     val verdict: WorkspaceVerdict,
 ) : UpgradeStage {
-
     @Action(cost = 0.05, description = "Finalize: the goal BuildGreen is satisfied")
     @AchievesGoal(description = "BuildGreen: the validated upgrade builds green with tests passing")
     fun finalizeUpgrade(): UpgradeComplete {
         AgentTrace.record("finalizeUpgrade")
+        RunAudit.emit(TrajectoryEvent.Completed(terminal = "UpgradeComplete"))
         return FinalizeUpgradeAction.finalize(validatedPlan, verdict)
     }
 }

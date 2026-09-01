@@ -14,11 +14,15 @@ import com.renovator.validation.ValidatedPlan
 object DryRunCompileAction {
     private val validator: DryRunCompileValidator = DryRunCompileValidator()
 
-    fun dryRun(patch: CodePatch, runRequest: RunRequest): CompileCheckResult =
-        validator.check(patch, runRequest.repoPath)
+    fun dryRun(
+        patch: CodePatch,
+        runRequest: RunRequest,
+    ): CompileCheckResult = validator.check(patch, runRequest.repoPath)
 
-    fun dryRunPlan(plan: ValidatedPlan, runRequest: RunRequest): CompileCheckResult =
-        validator.checkPlan(plan, runRequest.repoPath)
+    fun dryRunPlan(
+        plan: ValidatedPlan,
+        runRequest: RunRequest,
+    ): CompileCheckResult = validator.checkPlan(plan, runRequest.repoPath)
 
     fun mode(): RenovatorProperties.DryRunCompileMode = RenovatorProperties().validation.dryRunCompile
 }

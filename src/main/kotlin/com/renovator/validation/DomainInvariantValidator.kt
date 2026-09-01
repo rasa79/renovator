@@ -60,6 +60,34 @@ class DomainInvariantValidator(
         return checkPom(pomXmlAfterEdit)
     }
 
+    /**
+     * L3 domain invariant for a CODE patch: code patches touch code. The build file
+     * (pom.xml) is owned by PLAN steps — VersionStep coordinate edits run the whole
+     * L3 pipeline (existence, monotonic, snapshots, repository allowlist); a patch
+     * that edits the pom would bypass exactly the checks that decide whether a
+     * version change is admissible. The invariant keeps the two lanes apart. VCS
+     * metadata and build output are banned too (belt-and-braces alongside the L1
+     * forbidden patterns, which must not be the only line of defense).
+     */
+    fun check(patch: com.renovator.domain.CodePatch): ValidationRejection? {
+        val path = patch.filePath.replace('\\', '/')
+        if (path == "pom.xml" || path.endsWith("/pom.xml")) {
+            return rejection(
+                "L3:patch-build-file",
+                "code patches must not modify the build file (pom.xml) — version and dependency edits are plan steps",
+                path,
+            )
+        }
+        if (path.startsWith(".git/") || path.contains("/target/")) {
+            return rejection(
+                "L3:patch-forbidden-area",
+                "patch targets a forbidden area (VCS metadata or build output)",
+                path,
+            )
+        }
+        return null
+    }
+
     private fun checkPom(pomXml: String): ValidationRejection? {
         val model =
             try {

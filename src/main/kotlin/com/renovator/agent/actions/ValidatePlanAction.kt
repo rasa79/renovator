@@ -19,12 +19,19 @@ object ValidatePlanAction {
     private val invariants: DomainInvariantValidator = DomainInvariantValidator(HttpVersionCatalog())
 
     sealed interface Outcome {
-        data class Accepted(val plan: ValidatedPlan) : Outcome
+        data class Accepted(
+            val plan: ValidatedPlan,
+        ) : Outcome
 
-        data class Rejected(val rejection: ValidationRejection) : Outcome
+        data class Rejected(
+            val rejection: ValidationRejection,
+        ) : Outcome
     }
 
-    fun validate(plan: UpgradePlan, pomAfterEdit: String): Outcome {
+    fun validate(
+        plan: UpgradePlan,
+        pomAfterEdit: String,
+    ): Outcome {
         for (step in plan.steps) {
             if (step is PlanStep.PatchStep) {
                 val l1 = whitelist.check(step.patch)

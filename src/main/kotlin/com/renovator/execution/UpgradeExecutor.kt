@@ -60,12 +60,7 @@ open class UpgradeExecutor {
                 }
 
                 is com.renovator.domain.PlanStep.VersionStep -> {
-                    stageVersionChange(
-                        step.change.groupId,
-                        step.change.artifactId,
-                        step.change.toVersion,
-                        workspace,
-                    )
+                    stageVersionChange(step.change, workspace)
                 }
             }
         }
@@ -131,20 +126,54 @@ open class UpgradeExecutor {
         Files.writeString(target, (applied as com.renovator.validation.DiffApplyValidator.ApplyResult.Applied).content)
     }
 
-    /** Minimal dependency-block version bump on the workspace pom (Task 3.1 matures it). */
+    /**
+     * Applies a version change to the workspace pom. Two shapes:
+     *  - plain bump: the pom already declares groupId:artifactId -> replace its version;
+     *  - coordinate migration (groupId and/or artifactId change, e.g. the api-removal
+     *    fixture commons-lang:commons-lang -> org.apache.commons:commons-lang3): find the
+     *    dependency block whose version equals fromVersion and rewrite the whole block
+     *    (groupId, artifactId, version) to the target coordinates.
+     */
     private fun stageVersionChange(
-        groupId: String,
-        artifactId: String,
-        toVersion: String,
+        change: com.renovator.domain.VersionChange,
         workspace: WorkspaceRef,
     ) {
         val pom = workspace.path.resolve("pom.xml")
         val text = Files.readString(pom)
         val marker =
             Regex(
-                """(<artifactId>$artifactId</artifactId>\s*<version>)[^<]+(</version>)""",
+                """(<artifactId>${change.artifactId}</artifactId>\s*<version>)[^<]+(</version>)""",
             )
-        require(marker.containsMatchIn(text)) { "pom does not declare dependency $groupId:$artifactId" }
-        Files.writeString(pom, marker.replace(text) { m -> "${m.groupValues[1]}$toVersion${m.groupValues[2]}" })
+        if (marker.containsMatchIn(text)) {
+            Files.writeString(
+                pom,
+                marker.replace(text) { m -> "${m.groupValues[1]}${change.toVersion}${m.groupValues[2]}" },
+            )
+            return
+        }
+        // Migration: rewrite the FROM-coordinate version block to the TO coordinates.
+        val blockRe =
+            Regex(
+                """<dependency>\s*<groupId>([^<]+)</groupId>\s*<artifactId>([^<]+)</artifactId>\s*<version>([^<]+)</version>\s*</dependency>""",
+            )
+        val block =
+            blockRe.findAll(text).firstOrNull { m ->
+                m.groupValues[3] == change.fromVersion && m.groupValues[1] != change.groupId
+            }
+        require(block != null) {
+            "pom does not declare from-version ${change.fromVersion} to migrate ${change.groupId}:${change.artifactId}:${change.toVersion}"
+        }
+        val replacedBlock =
+            "<dependency>${System.lineSeparator()}            " +
+                "<groupId>${change.groupId}</groupId>${System.lineSeparator()}            " +
+                "<artifactId>${change.artifactId}</artifactId>${System.lineSeparator()}            " +
+                "<version>${change.toVersion}</version>${System.lineSeparator()}        </dependency>"
+        val migrated =
+            buildString {
+                append(text.substring(0, block.range.first))
+                append(replacedBlock)
+                append(text.substring(block.range.last + 1))
+            }
+        Files.writeString(pom, migrated)
     }
 }

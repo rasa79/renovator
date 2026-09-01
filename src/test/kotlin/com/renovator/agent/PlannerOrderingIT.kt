@@ -20,7 +20,6 @@ import java.nio.file.Path
  * the planner runs the CHEAP validators before any sandbox build.
  */
 class PlannerOrderingIT {
-
     private class ScriptedLlm : LlmActions() {
         override fun proposePlan(
             context: com.embabel.agent.api.common.OperationContext,
@@ -29,19 +28,27 @@ class PlannerOrderingIT {
         ): LlmOutcome<UpgradePlan> =
             LlmOutcome.Accepted(
                 UpgradePlan(
-                    steps = listOf(
-                        PlanStep.VersionStep(VersionChange("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0", ChangeScope.DIRECT)),
-                    ),
+                    steps =
+                        listOf(
+                            PlanStep.VersionStep(
+                                VersionChange("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0", ChangeScope.DIRECT),
+                            ),
+                        ),
                     rationale = "single bump",
                 ),
                 emptyList(),
             )
 
-        override fun diagnoseFailure(context: com.embabel.agent.api.common.OperationContext, build: com.renovator.domain.BuildResult): LlmOutcome<com.renovator.domain.BuildDiagnosis> =
-            error("n/a")
+        override fun diagnoseFailure(
+            context: com.embabel.agent.api.common.OperationContext,
+            build: com.renovator.domain.BuildResult,
+        ): LlmOutcome<com.renovator.domain.BuildDiagnosis> = error("n/a")
 
-        override fun proposePatch(context: com.embabel.agent.api.common.OperationContext, diagnosis: com.renovator.domain.BuildDiagnosis, fileContent: String): LlmOutcome<com.renovator.domain.CodePatch> =
-            error("n/a")
+        override fun proposePatch(
+            context: com.embabel.agent.api.common.OperationContext,
+            diagnosis: com.renovator.domain.BuildDiagnosis,
+            fileContent: String,
+        ): LlmOutcome<com.renovator.domain.CodePatch> = error("n/a")
     }
 
     @Test
@@ -51,13 +58,21 @@ class PlannerOrderingIT {
         try {
             val goal = UpgradeGoal(targets = listOf(DependencyTarget("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0")))
             val runRequest = RunRequest(repoPath = Path.of("fixtures/fixture-clean"), goal = goal)
-            val meta = com.embabel.agent.api.annotation.support.AgentMetadataReader().createAgentMetadata(RenovatorAgent()) as com.embabel.agent.core.Agent
-            val ap = com.embabel.agent.test.integration.IntegrationTestUtils.dummyAgentPlatform()
-            val process = ap.createAgentProcess(
-                meta,
-                com.embabel.agent.core.ProcessOptions.DEFAULT.withPlannerType(com.embabel.agent.api.common.PlannerType.GOAP),
-                mapOf("goal" to goal, "runRequest" to runRequest),
-            ).run()
+            val meta =
+                com.embabel.agent.api.annotation.support.AgentMetadataReader().createAgentMetadata(
+                    RenovatorAgent(),
+                ) as com.embabel.agent.core.Agent
+            val ap =
+                com.embabel.agent.test.integration.IntegrationTestUtils
+                    .dummyAgentPlatform()
+            val process =
+                ap
+                    .createAgentProcess(
+                        meta,
+                        com.embabel.agent.core.ProcessOptions.DEFAULT
+                            .withPlannerType(com.embabel.agent.api.common.PlannerType.GOAP),
+                        mapOf("goal" to goal, "runRequest" to runRequest),
+                    ).run()
             process.resultOfType(com.renovator.domain.UpgradeComplete::class.java)
 
             val order = AgentTrace.snapshot()

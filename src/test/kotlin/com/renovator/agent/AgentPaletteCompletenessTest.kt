@@ -21,20 +21,20 @@ import java.nio.file.Path
  * action class references UpgradeExecutor (enforcement §4.2 as a wiring check).
  */
 class AgentPaletteCompletenessTest {
-
-    private val paletteCosts = mapOf(
-        "analyzeRepository" to 0.05,
-        "proposeUpgradePlan" to 0.30,
-        "validatePlan" to 0.05,
-        "applyValidatedChanges" to 0.10,
-        "runBuild" to 0.60,
-        "diagnoseFailure" to 0.30,
-        "proposePatch" to 0.30,
-        "validatePatch" to 0.05,
-        "dryRunCompile" to 0.80,
-        "requestHumanDecision" to 0.00,
-        "finalizeUpgrade" to 0.05,
-    )
+    private val paletteCosts =
+        mapOf(
+            "analyzeRepository" to 0.05,
+            "proposeUpgradePlan" to 0.30,
+            "validatePlan" to 0.05,
+            "applyValidatedChanges" to 0.10,
+            "runBuild" to 0.60,
+            "diagnoseFailure" to 0.30,
+            "proposePatch" to 0.30,
+            "validatePatch" to 0.05,
+            "dryRunCompile" to 0.80,
+            "requestHumanDecision" to 0.00,
+            "finalizeUpgrade" to 0.05,
+        )
 
     private fun stateClasses(): List<Class<*>> =
         listOf(
@@ -52,8 +52,7 @@ class AgentPaletteCompletenessTest {
             .mapNotNull { m ->
                 val ann = m.getAnnotation(Action::class.java) ?: return@mapNotNull null
                 m.name to ann.cost
-            }
-            .toMap()
+            }.toMap()
 
     @Test
     fun `every palette action in the plan table exists with explicit precondition and output type`() {

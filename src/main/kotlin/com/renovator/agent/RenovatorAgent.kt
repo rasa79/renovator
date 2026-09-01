@@ -11,13 +11,6 @@ import com.renovator.domain.RunRequest
 import com.renovator.domain.UpgradeGoal
 import org.springframework.stereotype.Component
 
-/**
- * Renovator agent (Phase 4): the @State machine in agent/states/Stages.kt carries
- * the palette per state (LEARN[012]); this class only provides the ENTRY action
- * (analyzeRepository returns Analyzing, PLAN Task 4.1) and the two guard
- * conditions (PLAN §6). The planner enters the state machine on the first action
- * and transitions by actions returning state objects.
- */
 // LEARN[009] GOAP/dynamic planning vs static graph wiring — the canonical essay
 // Why this way: Sentinel (the parent project) wires agents as a STATIC graph:
 //   every edge is declared, the flow is reviewable on the whiteboard, and "what
@@ -86,22 +79,38 @@ import org.springframework.stereotype.Component
 //   BPMN: less ceremony, more discipline about what is "current".
 // See also: PLAN §5, LEARN[009], PLAN §2 C-2
 
+/**
+ * Renovator agent (Phase 4): the @State machine in agent/states/Stages.kt carries
+ * the palette per state (LEARN[012]); this class only provides the ENTRY action
+ * (analyzeRepository returns Analyzing, PLAN Task 4.1) and the two guard
+ * conditions (PLAN §6). The planner enters the state machine on the first action
+ * and transitions by actions returning state objects.
+ */
+
 @Agent(description = "Renovator: propose, validate, execute, observe, replan")
 @Component
 class RenovatorAgent(
     private val commitCandidacyCondition: CommitCandidacyCondition = CommitCandidacyCondition(),
     private val gateArmedCondition: GateArmedCondition = GateArmedCondition(),
 ) {
-
     @Action(cost = 0.05, description = "Analyze the target repository (entry state)")
-    fun analyzeRepository(goal: UpgradeGoal, runRequest: RunRequest): Analyzing =
-        Analyzing(goal, runRequest)
+    fun analyzeRepository(
+        goal: UpgradeGoal,
+        runRequest: RunRequest,
+    ): Analyzing {
+        com.renovator.audit.RunAudit
+            .ensureRunId()
+        com.renovator.audit.RunAudit
+            .emit(
+                com.renovator.audit.TrajectoryEvent
+                    .StageEntered("Analyzing"),
+            )
+        return Analyzing(goal, runRequest)
+    }
 
     @Condition(name = "commitCandidacyArmed")
-    fun commitCandidacyArmed(operationContext: OperationContext): Boolean =
-        commitCandidacyCondition.isArmed(operationContext)
+    fun commitCandidacyArmed(operationContext: OperationContext): Boolean = commitCandidacyCondition.isArmed(operationContext)
 
     @Condition(name = "approvalGateArmed")
-    fun approvalGateArmed(operationContext: OperationContext): Boolean =
-        gateArmedCondition.isArmed()
+    fun approvalGateArmed(operationContext: OperationContext): Boolean = gateArmedCondition.isArmed()
 }

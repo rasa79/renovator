@@ -1,0 +1,23 @@
+{
+  "failedGoals": ["verify"],
+  "rootCauses": [
+    {
+      "symbolOrArtifact": "escapeSql",
+      "explanation": "commons-lang 2.6 StringEscapeUtils.escapeSql was removed from the commons-lang3 family; after the coordinate migration to org.apache.commons:commons-lang3:3.14.0 the imported org.apache.commons.lang.StringEscapeUtils type no longer exists and the call site cannot compile."
+    },
+    {
+      "symbolOrArtifact": "StringEscapeUtils",
+      "explanation": "javac names the removed TYPE (StringEscapeUtils), not the method: with lang3 the whole org.apache.commons.lang package is absent, so the import fails before the method is checked. The repair must remove the import, not swap the package."
+    }
+  ],
+  "suggestedActions": [
+    {
+      "kind": "PATCH_CODE",
+      "detail": "replace the StringEscapeUtils.escapeSql call with a local escape implementation that doubles single quotes"
+    },
+    {
+      "kind": "MULTI_HOP",
+      "detail": "kept for the report only: no alternate coordinate exists that still provides escapeSql — the code patch is the only cure"
+    }
+  ]
+}

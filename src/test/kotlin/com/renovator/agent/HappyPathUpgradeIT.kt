@@ -26,14 +26,15 @@ import java.nio.file.Path
  * typed L0 rejection (reason surfaced), the loop replans and completes.
  */
 class HappyPathUpgradeIT {
-
     private fun goal() = UpgradeGoal(targets = listOf(DependencyTarget("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0")))
+
     private val runRequest = RunRequest(repoPath = Path.of("fixtures/fixture-clean"), goal = goal())
     private val cannedPlan =
         UpgradePlan(
-            steps = listOf(
-                PlanStep.VersionStep(VersionChange("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0", ChangeScope.DIRECT)),
-            ),
+            steps =
+                listOf(
+                    PlanStep.VersionStep(VersionChange("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0", ChangeScope.DIRECT)),
+                ),
             rationale = "single bump",
         )
 
@@ -82,13 +83,21 @@ class HappyPathUpgradeIT {
         ScriptedLlm.canned = cannedPlan
         LlmChannel.actions = scripted
         return try {
-            val meta = com.embabel.agent.api.annotation.support.AgentMetadataReader().createAgentMetadata(RenovatorAgent()) as com.embabel.agent.core.Agent
-            val ap = com.embabel.agent.test.integration.IntegrationTestUtils.dummyAgentPlatform()
-            val process = ap.createAgentProcess(
-                meta,
-                com.embabel.agent.core.ProcessOptions.DEFAULT.withPlannerType(com.embabel.agent.api.common.PlannerType.GOAP),
-                mapOf("goal" to goal(), "runRequest" to runRequest),
-            ).run()
+            val meta =
+                com.embabel.agent.api.annotation.support.AgentMetadataReader().createAgentMetadata(
+                    RenovatorAgent(),
+                ) as com.embabel.agent.core.Agent
+            val ap =
+                com.embabel.agent.test.integration.IntegrationTestUtils
+                    .dummyAgentPlatform()
+            val process =
+                ap
+                    .createAgentProcess(
+                        meta,
+                        com.embabel.agent.core.ProcessOptions.DEFAULT
+                            .withPlannerType(com.embabel.agent.api.common.PlannerType.GOAP),
+                        mapOf("goal" to goal(), "runRequest" to runRequest),
+                    ).run()
             process.resultOfType(UpgradeComplete::class.java)
             AgentTrace.snapshot()
         } finally {

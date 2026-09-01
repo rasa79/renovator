@@ -55,7 +55,11 @@ class ActionCostTableTest {
 
     @Test
     fun `every action declares a cost matching the plan table`() {
-        assertEquals(paletteCosts.keys, annotated.keys - setOf("resume"), "annotated actions must match the §6 table exactly (resume is the Phase-5 HITL continuation)")
+        assertEquals(
+            paletteCosts.keys,
+            annotated.keys - setOf("resume"),
+            "annotated actions must match the §6 table exactly (resume is the Phase-5 HITL continuation)",
+        )
         for ((name, cost) in paletteCosts) {
             assertEquals(cost, annotated[name] ?: -1.0, 0.0001, "cost for $name must match the §6 table")
         }

@@ -32,6 +32,13 @@ open class DockerSandboxRunner( // open: test seam (PLAN Task 1.6)
      * Plan Task 1.6: "uses the runner's internal command hook with sleep 600"). */
     private val dockerCommand: List<String> = listOf("docker"),
 ) {
+    companion object {
+        /** Container workdir of the bind-mounted workspace copy (`-w $WORK_MOUNT`):
+         *  javac diagnostics name files under this prefix; Repairing.proposePatch
+         *  relativizes against it to read the failing file from the local copy. */
+        const val WORK_MOUNT = "/work"
+    }
+
     /**
      * Runs `goals` in a throwaway container over [workspace] (PLAN §8.5 command shape):
      * `docker run --rm --memory=2g --cpus=2 -v <copy>:/work -v <cache-volume>:/m2

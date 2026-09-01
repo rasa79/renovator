@@ -77,6 +77,27 @@ class RenovatorAgent(
     private val commitCandidacyCondition: CommitCandidacyCondition = CommitCandidacyCondition(),
     private val gateArmedCondition: GateArmedCondition = GateArmedCondition(),
 ) {
+    // LEARN[010] Action-cost asymmetry: the planner prefers plans that fail cheap
+    // Why this way: every action in the palette is priced by what it risks. Cheap
+    //   validators (0.05) gate every proposal; LLM calls (0.30) are mid; sandbox
+    //   operations (0.60/0.80) are expensive and A* only routes through them when
+    //   cheaper paths are exhausted. A plan that fails at L1 costs 0.05+0.30+0.05
+    //   (analysis + proposal + validation); a plan that fails at the build costs
+    //   the same PLUS 0.60 and a container — so the search prefers to surface the
+    //   cheap failure first, which is exactly the "fail cheap" interview-grade
+    //   property the project claims (D9).
+    // Good sides: costs are declarative and reflectable (ActionCostTableTest ties
+    //   them to the PLAN §6 table); ordering is testable (PlannerOrderingIT);
+    //   adding a new operation is a number, not a new control-flow branch.
+    // Drawbacks: costs are GUIDANCE, never correctness — a wrong cost only skews
+    //   plan preference, it cannot admit an invalid plan (the deterministic judge
+    //   is the gate, not the price); and tuning is empirical (a 0.80 dry-run may
+    //   warrant a different price if compiles get cheaper).
+    // Concept: think of it as a mixed strategy in game theory terms — you pay the
+    //   cheapest probe first because information has a price and replanning is
+    //   free. The planner's A* is indifferent to which validator catches a bug,
+    //   only to how much the search costs before it knows.
+    // See also: PLAN §6 cost rationale, PLAN D9, LEARN[009], ActionCostTableTest
     @Action(cost = 0.05, description = "Analyze the target repository (pom facts)")
     fun analyzeRepository(
         goal: UpgradeGoal,

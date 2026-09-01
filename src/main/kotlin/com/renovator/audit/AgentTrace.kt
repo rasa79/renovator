@@ -12,7 +12,6 @@ object AgentTrace {
 
     fun record(name: String) {
         entries += name
-        println("AGENTTRACE-RECORD: " + name)
     }
 
     fun snapshot(): List<String> = entries.toList()

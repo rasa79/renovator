@@ -38,11 +38,11 @@ sealed interface LlmOutcome<T> {
 }
 
 @Component
-class LlmActions(
+open class LlmActions(
     private val call: LlmCall = LlmCall(),
     private val prompts: PromptCatalog = PromptCatalog(),
 ) {
-    fun proposePlan(
+    open fun proposePlan(
         context: com.embabel.agent.api.common.OperationContext,
         repoModel: RepoModel,
         goal: UpgradeGoal,
@@ -53,7 +53,7 @@ class LlmActions(
             )
         })
 
-    fun diagnoseFailure(
+    open fun diagnoseFailure(
         context: com.embabel.agent.api.common.OperationContext,
         build: BuildResult,
     ): LlmOutcome<BuildDiagnosis> =
@@ -66,7 +66,7 @@ class LlmActions(
             )
         })
 
-    fun proposePatch(
+    open fun proposePatch(
         context: com.embabel.agent.api.common.OperationContext,
         diagnosis: BuildDiagnosis,
         fileContent: String,

@@ -13,8 +13,8 @@ are deleted comments kept for numbering history; numbers are never reused.
 | 005 | Kotlin for a Java engineer: the proposal types are the contract | src/main/kotlin/com/renovator/domain/Proposals.kt:8 | kotlin data-class/sealed contract |
 | 006 | The enforcement boundary: validation is code, not prompts | src/main/kotlin/com/renovator/execution/UpgradeExecutor.kt:16 | enforcement-boundary principle |
 | 007 | Normalize-then-match: why matching before normalizing is the classic whitelist bypass | src/main/kotlin/com/renovator/validation/PathWhitelistValidator.kt:8 | normalize-then-match whitelist |
+| 008 | A real diff library, never regex: what unified-diff context lines are FOR | src/main/kotlin/com/renovator/validation/DiffApplyValidator.kt:7 | real diff library, no regex |
+| 009 | GOAP/dynamic planning vs static graph wiring — the canonical essay | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:39 | GOAP vs static graph |
+| 010 | Action-cost asymmetry: the planner prefers plans that fail cheap | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:80 | cost asymmetry, fail cheap |
 | 011 | The typed blackboard is workflow-engine process variables | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:145 | typed blackboard = BPMN process variables |
 | 017 | LLM retry taxonomy: which HTTP errors are retryable and why | src/main/kotlin/com/renovator/agent/llm/LlmCall.kt:3 | retry taxonomy for LLM APIs |
-| 010 | Action-cost asymmetry: the planner prefers plans that fail cheap | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:80 | cost asymmetry, fail cheap |
-| 009 | GOAP/dynamic planning vs static graph wiring — the canonical essay | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:39 | GOAP vs static graph |
-| 008 | A real diff library, never regex: what unified-diff context lines are FOR | src/main/kotlin/com/renovator/validation/DiffApplyValidator.kt:7 | real diff library, no regex |

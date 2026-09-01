@@ -324,6 +324,35 @@ def check_no_verify(root: Path, violations: list[str]):
             violations.append(f"GW-4: {label} contains --no-verify (forbidden by PLAN 10.3)")
 
 
+
+def check_ledger_order(root: Path, violations: list[str]):
+    """Mechanical invariant (Task 3.9, reviewer mandate): both ledgers must list
+    their rows in ascending numeric order. Struck-through rows are historical and
+    exempt (they are closing records, not live ordering)."""
+    ledgers = (
+        ("LEARN_INDEX.md", r"^\|\s*(\d{3})\s*\|", 3),
+        ("KNOWN_LIMITATIONS.md", r"^\|\s*KL-(\d{2})\s*\|", 2),
+    )
+    for name, pattern, width in ledgers:
+        text = read_text(root / name)
+        if text is None:
+            continue
+        seen: list[int] = []
+        for line_no, line in enumerate(text.splitlines(), 1):
+            if "~~" in line[:20]:
+                continue
+            m = re.match(pattern, line)
+            if not m:
+                continue
+            n = int(m.group(1))
+            if seen and n <= seen[-1]:
+                label = "KL-" + str(n).zfill(width) if width == 2 else str(n).zfill(width)
+                prev = "KL-" + str(seen[-1]).zfill(width) if width == 2 else str(seen[-1]).zfill(width)
+                violations.append(f"{name}: rows out of ascending numeric order at line {line_no} ({label} follows {prev})")
+                break
+            seen.append(n)
+
+
 def check_phase_boundary(root: Path, violations: list[str]):
     status = git(root, "status", "--porcelain").stdout
     if status.strip():
@@ -356,6 +385,7 @@ def main() -> int:
 
     check_learn(root, violations, full=args.full)
     check_no_verify(root, violations)
+    check_ledger_order(root, violations)
     check_deferred(root, files, check_readme=args.full or phase >= 7, violations=violations, verbose=args.verbose)
     check_prompts(root, phase, violations)
     if args.phase_boundary:

@@ -154,5 +154,42 @@ class NoVerifyRuleTest(unittest.TestCase):
             self.assertEqual([], violations)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class LedgerOrderRuleTest(unittest.TestCase):
+    def test_rejects_out_of_order_learn_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write(
+                "LEARN_INDEX.md",
+                "| # | Title | Location | Concept |\n"
+                "| 002 | b | f:2 | c |\n"
+                "| 001 | a | f:1 | c |\n",
+            )
+            violations = []
+            chk.check_ledger_order(Path(td), violations)
+            self.assertTrue(any("LEARN_INDEX.md" in v and "out of ascending order" in v for v in violations))
+
+    def test_accepts_sorted_learn_index(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write(
+                "LEARN_INDEX.md",
+                "| # | Title | Location | Concept |\n"
+                "| 001 | a | f:1 | c |\n"
+                "| 008 | h | f:8 | c |\n",
+            )
+            violations = []
+            chk.check_ledger_order(Path(td), violations)
+            self.assertEqual([], violations)
+
+    def test_rejects_out_of_order_kl_ledger(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write(
+                "KNOWN_LIMITATIONS.md",
+                "| KL-NN | Title | User-visible | Pre-declared | Rationale |\n"
+                "| KL-10 | x | user-visible: no | pre-declared: yes | r |\n"
+                "| KL-06 | y | user-visible: no | pre-declared: yes | r |\n",
+            )
+            violations = []
+            chk.check_ledger_order(Path(td), violations)
+            self.assertTrue(any("KNOWN_LIMITATIONS.md" in v and "KL-10" in v for v in violations))

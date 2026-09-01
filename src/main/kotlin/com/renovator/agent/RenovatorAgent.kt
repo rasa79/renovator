@@ -101,7 +101,7 @@ class RenovatorAgent(
             .RenovatorProperties()
             .budget,
 ) {
-    @Action(cost = 0.05, description = "Analyze the target repository (entry state)")
+    @Action(cost = 0.05, description = "Analyze the target repository (entry state)", pre = ["freshRun"])
     fun analyzeRepository(
         goal: UpgradeGoal,
         runRequest: RunRequest,
@@ -121,6 +121,14 @@ class RenovatorAgent(
 
     @Condition(name = "approvalGateArmed")
     fun approvalGateArmed(operationContext: OperationContext): Boolean = gateArmedCondition.isArmed()
+
+    /** D10 (Task 4.5): the entry runs only on a fresh blackboard. A resumed run
+     *  re-seeds the machine FROM its snapshot state, so the entry must not fire
+     *  again ("no repeated Analyze stage" — KillResumeIT) — and the state is on
+     *  the board the moment it exists, so the gate is a pure read. */
+    @Condition(name = "freshRun")
+    fun freshRun(operationContext: OperationContext): Boolean =
+        operationContext.objects.none { it is com.renovator.agent.states.UpgradeStage }
 
     @Condition(name = "diagnosisSuggestsPatch")
     fun diagnosisSuggestsPatch(operationContext: OperationContext): Boolean = diagnosisHintCondition.suggestsPatch(operationContext)

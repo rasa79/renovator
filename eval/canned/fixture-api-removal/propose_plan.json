@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "type": "VersionStep",
+      "change": {
+        "groupId": "org.apache.commons",
+        "artifactId": "commons-lang3",
+        "fromVersion": "2.6",
+        "toVersion": "3.14.0",
+        "scope": "DIRECT"
+      }
+    }
+  ],
+  "rationale": "migrate commons-lang 2.6 to commons-lang3 3.14.0"
+}

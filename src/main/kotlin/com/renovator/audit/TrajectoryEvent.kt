@@ -20,6 +20,7 @@ import java.time.Instant
     JsonSubTypes.Type(value = TrajectoryEvent.Escalated::class, name = "Escalated"),
     JsonSubTypes.Type(value = TrajectoryEvent.Completed::class, name = "Completed"),
     JsonSubTypes.Type(value = TrajectoryEvent.LlmCall::class, name = "LlmCall"),
+    JsonSubTypes.Type(value = TrajectoryEvent.Resumed::class, name = "Resumed"),
 )
 sealed interface TrajectoryEvent {
     val at: Instant
@@ -70,6 +71,15 @@ sealed interface TrajectoryEvent {
         val attempts: Int,
         val rejected: Boolean,
         val reason: String,
+        override val at: Instant = Instant.now(),
+    ) : TrajectoryEvent
+
+    /** Kill-and-resume marker (PLAN Task 4.5, D10): a resumed run appends this
+     *  first, so the audit trail shows exactly where the previous JVM's run ended
+     *  and the continuation began — the same run id, one story. */
+    data class Resumed(
+        val reason: String,
+        val frame: String,
         override val at: Instant = Instant.now(),
     ) : TrajectoryEvent
 }

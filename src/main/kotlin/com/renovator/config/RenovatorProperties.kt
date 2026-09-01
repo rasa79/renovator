@@ -73,12 +73,18 @@ data class RenovatorProperties(
     /** Planner bounds (C-7; R-4) — default 25 per PLAN §6/§10.2. */
     data class Budget(
         val maxActions: Int = 25,
+        /** Internal effort ceiling: rejections accumulate here and the agent escalates
+         *  (Blocked + UpgradeBlocker) when reached — BEFORE the framework's
+         *  maxActions safety net (LEARN[014], C-7). */
+        val maxAttempts: Int = 5,
     )
 
     init {
         require(llm.provider == "cloud" || llm.provider == "ollama") {
             "renovator.llm.provider must be 'cloud' or 'ollama', but was '$llm.provider'"
         }
+        require(budget.maxActions >= 1) { "renovator.budget.max-actions must be >= 1, was ${budget.maxActions}" }
+        require(budget.maxAttempts >= 1) { "renovator.budget.max-attempts must be >= 1, was ${budget.maxAttempts}" }
         require(sandbox.timeoutSeconds >= 10) {
             "renovator.sandbox.timeout-seconds must be >= 10 (a shorter timeout cannot be " +
                 "distinguished from a failed container start), but was ${sandbox.timeoutSeconds}"

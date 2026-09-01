@@ -18,6 +18,7 @@ import com.renovator.agent.actions.ValidatePlanAction
 import com.renovator.audit.AgentTrace
 import com.renovator.audit.RunAudit
 import com.renovator.audit.TrajectoryEvent
+import com.renovator.domain.AttemptRecord
 import com.renovator.domain.BuildDiagnosis
 import com.renovator.domain.BuildResult
 import com.renovator.domain.CodePatch
@@ -87,6 +88,13 @@ data class Planning(
     /** Set when this Planning frame was reached through a repair replan (Task 4.3):
      *  the failed build's diagnosis rides the state and informs the new proposal. */
     val lastFailure: BuildDiagnosis? = null,
+    /** The honest attempt ledger (Task 4.4): every rejected plan adds one record
+     *  by looping back into Planning. It rides the STATE for two reasons: a
+     *  clearBlackboard loop wipes the board (LEARN[012]), and the data value is
+     *  what makes each Planning frame a DISTINCT node for the planner's search
+     *  (without it the reject loop is a pure cycle and the search dead-ends —
+     *  verified in this task). */
+    val attempts: List<AttemptRecord> = emptyList(),
 ) : UpgradeStage {
     /** LLM proposal: returns the plan object (no transition — stays in Planning).
      *  On a replan the failure diagnosis is part of the prompt, so the second
@@ -132,9 +140,16 @@ data class Planning(
         }
     }
 
-    /** Deterministic L1-L3 validation; transitions forward on accept. */
-    @Action(cost = 0.05, description = "Validate a proposed plan against L1-L3")
-    fun validatePlan(plan: UpgradePlan): Applying {
+    /**
+     * Deterministic L1-L3 validation; transitions forward on accept. On REJECT
+     * the machine does NOT throw (the Phase-3 pattern is replaced by the state
+     * transition, Task 4.4): returning a fresh Planning frame carrying the
+     * attempt ledger lets the planner re-propose and, once the ceiling is hit,
+     * pick the 0.00-cost escalation — a throw would lose the ledger and leave
+     * the honest-termination condition nothing to count (LEARN[014]).
+     */
+    @Action(cost = 0.05, description = "Validate a proposed plan against L1-L3", clearBlackboard = true)
+    fun validatePlan(plan: UpgradePlan): UpgradeStage {
         AgentTrace.record("validatePlan")
         return when (
             val outcome =
@@ -170,8 +185,54 @@ data class Planning(
                         reason = outcome.rejection.reason,
                     ),
                 )
-                throw ReplanRequestedException(outcome.rejection.reason)
+                Planning(
+                    goal,
+                    runRequest,
+                    repoModel,
+                    lastFailure = lastFailure,
+                    attempts =
+                        attempts +
+                            AttemptRecord(
+                                planRationale = plan.rationale,
+                                rejectedAt =
+                                    java.time.Instant
+                                        .now()
+                                        .toString(),
+                                buildFailedGoals = emptyList(),
+                                validationRejections = listOf(outcome.rejection),
+                            ),
+                ).also { RunAudit.emit(TrajectoryEvent.StageEntered("Planning")) }
             }
+        }
+    }
+
+    /** Honest termination (Task 4.4, C-7): the plan-space ceiling was hit — the
+     *  attempt ledger is the RUN's own typed trajectory (PlanAttempted +
+     *  ValidationOutcome pairs, read back via RunAudit — the single source of
+     *  truth; a `clearBlackboard`-free state could not carry it, LEARN[012]). The
+     *  blocker carries EVERY attempt and its typed rejection; Blocked then parks
+     *  the process (WaitFor) so a human can break the loop. */
+    @Action(cost = 0.00, description = "Escalate: plan space exhausted", pre = ["planSpaceExhausted"])
+    fun exhaustPlanSpace(): Blocked {
+        AgentTrace.record("exhaustPlanSpace")
+        val blocker =
+            UpgradeBlocker(
+                summary =
+                    "plan space exhausted after ${attempts.size} attempt(s): " +
+                        attempts.joinToString("; ") { it.planRationale },
+                attempts = attempts,
+                humanQuestion =
+                    "The planner proposed ${attempts.size} plan(s), all rejected by L1-L3 validation. " +
+                        "Provide more detailed guidance (or a relaxed goal) to make progress.",
+            )
+        RunAudit.emit(
+            TrajectoryEvent.ProposalReceived(
+                kind = "UpgradeBlocker",
+                summary = blocker.summary,
+            ),
+        )
+        return Blocked(goal, runRequest, blocker).also {
+            RunAudit.emit(TrajectoryEvent.StageEntered("Blocked"))
         }
     }
 }
@@ -378,16 +439,12 @@ data class Repairing(
     /** The replan lane (Task 4.3, PLAN §6.1 steps 7-8): when the diagnosis says the
      *  PLAN was wrong (pin a transitive, go two-hop), the state machine hands the
      *  diagnosis back to Planning and the LLM re-proposes with the failure in
-     *  context.
-     *
-     *  DELIBERATELY condition-free (evidence in the phase-4 report): a @Condition
-     *  only sees the CURRENT blackboard, so a condition on both lanes closes them
-     *  at the moment they matter (pre-diagnosis) and the planner finds no complete
-     *  plan -> STUCK. The open replan lane is the fallback that keeps a complete
-     *  path in the model at every tick; once the diagnosis lands, the patch lane
-     *  (gated on the PATCH_CODE hint) is CHEAPER (1.10 vs 1.15 to goal) and wins
-     *  when it is open — the two-hop case never opens it, so the replan proceeds. */
-    @Action(cost = 0.05, description = "Return to planning with the failure diagnosis")
+     *  context. The precondition (diagnosisSuggestsReplan) is open before the
+     *  diagnosis exists and resolves by the hint set once it does — see
+     *  DiagnosisHintCondition for the two-lane determinism rationale (a
+     *  @Condition only reads the CURRENT blackboard, so gating BOTH lanes
+     *  pre-diagnosis closes the machine: verified in this phase). */
+    @Action(cost = 0.05, description = "Return to planning with the failure diagnosis", pre = ["diagnosisSuggestsReplan"])
     fun replan(diagnosis: BuildDiagnosis): Planning {
         AgentTrace.record("replan")
         return Planning(goal, runRequest, repoModel, lastFailure = diagnosis).also {
@@ -402,15 +459,14 @@ data class Blocked(
     val blocker: UpgradeBlocker,
 ) : UpgradeStage {
     /** Escalation: parks the process in WAITING with a HumanDecision form (C-3/C-6;
-     *  the REST layer submits the decision — Phase 5). */
-    @Action(cost = 0.00, description = "Escalate to a human when plan space is exhausted", pre = ["approvalGateArmed"])
+     *  the REST layer submits the decision — Phase 5). The blocker was assembled by
+     *  Planning.exhaustPlanSpace (Task 4.4); the WaitFor title carries its history. */
+    @Action(cost = 0.00, description = "Escalate to a human when plan space is exhausted")
+    @AchievesGoal(description = "Escalated: plan space exhausted; a human decision is pending")
     fun requestHumanDecision(): HumanDecision {
         AgentTrace.record("requestHumanDecision")
         RunAudit.emit(TrajectoryEvent.Escalated(question = blocker.humanQuestion))
-        return com.embabel.agent.core.hitl.WaitFor.formSubmission(
-            "Plan space exhausted: ${blocker.humanQuestion} ($blocker)",
-            HumanDecision::class.java,
-        )
+        return RequestHumanDecisionAction.escalate(blocker)
     }
 
     /** Resume after a human decision: confirmed decisions re-enter the machine with

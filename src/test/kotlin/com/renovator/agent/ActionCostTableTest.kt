@@ -29,9 +29,10 @@ class ActionCostTableTest {
             "diagnoseFailure" to 0.30,
             "proposePatch" to 0.30,
             "validatePatch" to 0.05,
-            // Task 4.3 extension (phase-4 report): the deterministic replan hand-off
-            // back to Planning — the §6.1 step-8 transition.
+            // Task 4.3/4.4 extensions (phase-4 report): the deterministic replan
+            // hand-off (the §6.1 step-8 transition) and the plan-space escalation.
             "replan" to 0.05,
+            "exhaustPlanSpace" to 0.00,
             "dryRunCompile" to 0.80,
             "requestHumanDecision" to 0.00,
             "finalizeUpgrade" to 0.05,
@@ -61,7 +62,7 @@ class ActionCostTableTest {
         assertEquals(
             paletteCosts.keys,
             annotated.keys - setOf("resume"),
-            "annotated actions must match the §6 table exactly (resume = Phase-5 HITL continuation; replan = the Task-4.3 recovery lane)",
+            "annotated actions must match the §6 table exactly (resume = Phase-5 HITL continuation; replan/exhaustPlanSpace = the Task-4.3/4.4 lanes)",
         )
         for ((name, cost) in paletteCosts) {
             assertEquals(cost, annotated[name] ?: -1.0, 0.0001, "cost for $name must match the §6 table")

@@ -1,5 +1,7 @@
 {
-  "failedGoals": ["verify"],
+  "failedGoals": [
+    "verify"
+  ],
   "rootCauses": [
     {
       "symbolOrArtifact": "escapeSql",
@@ -14,10 +16,6 @@
     {
       "kind": "PATCH_CODE",
       "detail": "replace the StringEscapeUtils.escapeSql call with a local escape implementation that doubles single quotes"
-    },
-    {
-      "kind": "MULTI_HOP",
-      "detail": "kept for the report only: no alternate coordinate exists that still provides escapeSql — the code patch is the only cure"
     }
   ]
 }

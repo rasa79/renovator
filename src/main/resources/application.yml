@@ -52,6 +52,7 @@ renovator:
     commit-candidate: ${APPROVE_COMMIT_CANDIDATE:false}
   budget:
     max-actions: ${MAX_ACTIONS:25}
+    max-attempts: ${MAX_ATTEMPTS:5}
 
 # ---------------------------------------------------------------------------
 # Embabel wiring. See docs/verification-log.md rows C-8 for why:

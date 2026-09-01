@@ -96,6 +96,10 @@ class RenovatorAgent(
     private val commitCandidacyCondition: CommitCandidacyCondition = CommitCandidacyCondition(),
     private val gateArmedCondition: GateArmedCondition = GateArmedCondition(),
     private val diagnosisHintCondition: DiagnosisHintCondition = DiagnosisHintCondition(),
+    private val budget: com.renovator.config.RenovatorProperties.Budget =
+        com.renovator.config
+            .RenovatorProperties()
+            .budget,
 ) {
     @Action(cost = 0.05, description = "Analyze the target repository (entry state)")
     fun analyzeRepository(
@@ -120,4 +124,20 @@ class RenovatorAgent(
 
     @Condition(name = "diagnosisSuggestsPatch")
     fun diagnosisSuggestsPatch(operationContext: OperationContext): Boolean = diagnosisHintCondition.suggestsPatch(operationContext)
+
+    @Condition(name = "diagnosisSuggestsReplan")
+    fun diagnosisSuggestsReplan(operationContext: OperationContext): Boolean = diagnosisHintCondition.suggestsReplan(operationContext)
+
+    /** Task 4.4 (C-7): the attempt ledger is the run's typed trajectory (the
+     *  PlanAttempted events — one per accepted proposal, read back via RunAudit);
+     *  the escalation action opens as soon as the ceiling is hit. */
+    @Condition(name = "planSpaceExhausted")
+    fun planSpaceExhausted(operationContext: OperationContext): Boolean =
+        (
+            operationContext.objects
+                .filterIsInstance<com.renovator.agent.states.Planning>()
+                .lastOrNull()
+                ?.attempts
+                ?.size ?: 0
+        ) >= budget.maxAttempts
 }

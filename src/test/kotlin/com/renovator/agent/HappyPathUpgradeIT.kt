@@ -201,8 +201,9 @@ class HappyPathUpgradeIT {
         val scripted = ScriptedLlm()
         scripted.queue += Outcome(accepted = true, error = null)
         val (_, order) = runUpgrade(scripted)
-        writeTrajectory("stages-run", order)
-        val lines = store.read("stages-run")
+        val runId = "stages-run-" + System.nanoTime()
+        writeTrajectory(runId, order)
+        val lines = store.read(runId)
         val stages = lines.filter { it.contains("StageEntered") }
         assertTrue(stages.isNotEmpty(), "trajectory must contain stage entries")
         val joined =
@@ -225,8 +226,9 @@ class HappyPathUpgradeIT {
         val scripted = ScriptedLlm()
         scripted.queue += Outcome(accepted = true, error = null)
         val (_, order) = runUpgrade(scripted)
-        writeTrajectory("happy-run", order)
-        val lines = store.read("happy-run")
+        val runId = "happy-run-" + System.nanoTime()
+        writeTrajectory(runId, order)
+        val lines = store.read(runId)
         assertTrue(
             lines.none { it.contains("ValidationOutcome") && it.contains("\"accepted\":false") },
             "happy path has no rejection: $lines",

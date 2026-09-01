@@ -3,6 +3,7 @@ package com.renovator.agent.actions
 import com.renovator.domain.BuildResult
 import com.renovator.domain.TestResult
 import com.renovator.domain.UpgradeComplete
+import com.renovator.domain.WorkspaceVerdict
 import com.renovator.validation.ValidatedPlan
 import org.springframework.stereotype.Component
 
@@ -16,12 +17,11 @@ import org.springframework.stereotype.Component
 class FinalizeUpgradeAction {
     fun finalize(
         plan: ValidatedPlan,
-        build: BuildResult,
-        tests: TestResult,
+        verdict: WorkspaceVerdict,
     ): UpgradeComplete =
         UpgradeComplete(
             appliedSteps = plan.plan.steps,
-            finalBuild = build,
-            durationMs = build.durationMs,
+            finalBuild = verdict.build,
+            durationMs = verdict.build.durationMs,
         )
 }

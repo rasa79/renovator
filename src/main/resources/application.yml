@@ -67,6 +67,12 @@ embabel:
           api-key: ${OPENAI_API_KEY:sk-dev-key}
           custom:
             api-key: ${OPENAI_CUSTOM_API_KEY:sk-dev-key}
+      llm-operations:
+        data-binding:
+          # KL-12 mitigation (Phase 3): the framework's data-binding retrier burned
+          # ~10 attempts on a non-retryable quota error (phase-0 observation). ONE
+          # attempt per call; Renovator's LlmCall owns the taxonomy + bounded backoff.
+          max-attempts: 1
       # Small/local-model resilience knobs (C-8). Uncomment for weak models:
       # toolloop:
       #   type: parallel
@@ -76,11 +82,4 @@ embabel:
   models:
     default-llm: ${LLM_MODEL:gpt-4.1-mini}
     # Role mapping is set by LlmEnvironmentPostProcessor from renovator.llm.planner-role.
-  agent:
-    platform:
-      llm-operations:
-        data-binding:
-          # KL-12 mitigation (Phase 3): the framework's data-binding retrier burned
-          # ~10 attempts on a non-retryable quota error (phase-0 observation). ONE
-          # attempt per call; Renovator's LlmCall owns the taxonomy + bounded backoff.
-          max-attempts: 1
+

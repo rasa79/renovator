@@ -4,6 +4,7 @@ import com.renovator.config.RenovatorProperties
 import com.renovator.domain.BuildResult
 import com.renovator.domain.TestFailure
 import com.renovator.domain.TestResult
+import com.renovator.domain.WorkspaceVerdict
 import com.renovator.execution.DockerSandboxRunner
 import org.springframework.stereotype.Component
 import java.time.Duration
@@ -17,9 +18,9 @@ import java.time.Duration
 class RunBuildAction(
     private val runner: DockerSandboxRunner = DockerSandboxRunner(RenovatorProperties().sandbox),
 ) {
-    fun runBuild(workspaceRef: com.renovator.execution.WorkspaceRef): Pair<BuildResult, TestResult> {
+    fun runBuild(workspaceRef: com.renovator.execution.WorkspaceRef): WorkspaceVerdict {
         val build = runner.runBuild(workspaceRef, listOf("verify"), Duration.ofMinutes(10))
-        return Pair(build, parseTests(build))
+        return WorkspaceVerdict(build = build, tests = parseTests(build))
     }
 
     companion object {

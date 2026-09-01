@@ -77,3 +77,13 @@ data class HumanDecision(
     val approved: Boolean,
     val comment: String,
 )
+
+/**
+ * Single-output composition for `runBuild` (PLAN §6 shows "BuildResult +
+ * TestResult" — one action yields one blackboard object, so the judge's verdict
+ * and the parsed test totals travel together; documented in the phase-3 report).
+ */
+data class WorkspaceVerdict(
+    val build: BuildResult,
+    val tests: TestResult,
+)

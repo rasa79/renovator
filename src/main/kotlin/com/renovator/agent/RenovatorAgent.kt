@@ -3,8 +3,10 @@ package com.renovator.agent
 import com.embabel.agent.api.annotation.AchievesGoal
 import com.embabel.agent.api.annotation.Action
 import com.embabel.agent.api.annotation.Agent
+import com.embabel.agent.api.annotation.Condition
 import com.embabel.agent.api.common.ActionContext
 import com.embabel.agent.api.common.OperationContext
+import com.embabel.agent.core.ReplanRequestedException
 import com.renovator.agent.actions.AnalyzeRepositoryAction
 import com.renovator.agent.actions.ApplyValidatedChangesAction
 import com.renovator.agent.actions.DryRunCompileAction
@@ -15,17 +17,20 @@ import com.renovator.agent.actions.RequestHumanDecisionAction
 import com.renovator.agent.actions.RunBuildAction
 import com.renovator.agent.actions.ValidatePatchAction
 import com.renovator.agent.actions.ValidatePlanAction
+import com.renovator.agent.conditions.CommitCandidacyCondition
+import com.renovator.agent.conditions.GateArmedCondition
+import com.renovator.audit.AgentTrace
 import com.renovator.domain.BuildDiagnosis
 import com.renovator.domain.BuildResult
 import com.renovator.domain.CodePatch
 import com.renovator.domain.CompileCheckResult
 import com.renovator.domain.RepoModel
 import com.renovator.domain.RunRequest
-import com.renovator.domain.TestResult
 import com.renovator.domain.UpgradeBlocker
 import com.renovator.domain.UpgradeComplete
 import com.renovator.domain.UpgradeGoal
 import com.renovator.domain.UpgradePlan
+import com.renovator.domain.WorkspaceVerdict
 import com.renovator.execution.WorkspaceSnapshot
 import com.renovator.validation.ValidatedPatch
 import com.renovator.validation.ValidatedPlan
@@ -69,33 +74,52 @@ class RenovatorAgent(
     private val dryRunCompileAction: DryRunCompileAction,
     private val requestHumanDecisionAction: RequestHumanDecisionAction,
     private val llmActions: LlmActions,
+    private val commitCandidacyCondition: CommitCandidacyCondition = CommitCandidacyCondition(),
+    private val gateArmedCondition: GateArmedCondition = GateArmedCondition(),
 ) {
-    // ---------------- deterministic palette ----------------
-
     @Action(cost = 0.05, description = "Analyze the target repository (pom facts)")
     fun analyzeRepository(
         goal: UpgradeGoal,
         runRequest: RunRequest,
-    ): RepoModel = analyzeRepositoryAction.analyze(runRequest)
+    ): RepoModel {
+        AgentTrace.record("analyzeRepository")
+        return analyzeRepositoryAction.analyze(runRequest)
+    }
 
     @Action(cost = 0.05, description = "Validate a proposed plan against L1-L3")
     fun validatePlan(
         plan: UpgradePlan,
         runRequest: RunRequest,
-    ): ValidatePlanAction.Outcome =
-        validatePlanAction.validate(
-            plan,
-            runRequest.repoPath
-                .resolve("pom.xml")
-                .toFile()
-                .readText(),
-        )
+    ): ValidatedPlan {
+        AgentTrace.record("validatePlan")
+        val outcome =
+            validatePlanAction.validate(
+                plan,
+                runRequest.repoPath
+                    .resolve("pom.xml")
+                    .toFile()
+                    .readText(),
+            )
+        return when (outcome) {
+            is ValidatePlanAction.Outcome.Accepted -> {
+                outcome.plan
+            }
+
+            is ValidatePlanAction.Outcome.Rejected -> {
+                AgentTrace.record("validatePlan:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                throw ReplanRequestedException(outcome.rejection.reason)
+            }
+        }
+    }
 
     @Action(cost = 0.10, description = "Apply validated changes to a pristine workspace copy")
     fun applyValidatedChanges(
         plan: ValidatedPlan,
         runRequest: RunRequest,
-    ): WorkspaceSnapshot = applyValidatedChangesAction.apply(plan, runRequest)
+    ): WorkspaceSnapshot {
+        AgentTrace.record("applyValidatedChanges")
+        return applyValidatedChangesAction.apply(plan, runRequest)
+    }
 
     // LEARN[011] The typed blackboard is workflow-engine process variables
     // Why this way: an Embabel blackboard is a bag of typed objects, and action
@@ -117,51 +141,105 @@ class RenovatorAgent(
     //   BPMN: less ceremony, more discipline about what is "current".
     // See also: PLAN §5, LEARN[009], PLAN §2 C-2
     @Action(cost = 0.60, description = "Run the sandboxed build and tests")
-    fun runBuild(snapshot: WorkspaceSnapshot): Pair<BuildResult, TestResult> = runBuildAction.runBuild(snapshot.ref)
+    fun runBuild(snapshot: WorkspaceSnapshot): WorkspaceVerdict {
+        AgentTrace.record("runBuild")
+        return runBuildAction.runBuild(snapshot.ref)
+    }
 
     @Action(cost = 0.05, description = "Validate a code patch against L1-L2")
     fun validatePatch(
         patch: CodePatch,
         runRequest: RunRequest,
-    ): ValidatePatchAction.Outcome = validatePatchAction.validate(patch, runRequest)
+    ): ValidatedPatch {
+        AgentTrace.record("validatePatch")
+        return when (val outcome = validatePatchAction.validate(patch, runRequest)) {
+            is ValidatePatchAction.Outcome.Accepted -> {
+                outcome.patch
+            }
 
-    @Action(cost = 0.80, description = "Dry-run compile in the sandbox (expensive opinion)")
+            is ValidatePatchAction.Outcome.Rejected -> {
+                AgentTrace.record("validatePatch:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                throw ReplanRequestedException(outcome.rejection.reason)
+            }
+        }
+    }
+
+    @Action(cost = 0.80, description = "Dry-run compile in the sandbox (expensive opinion)", pre = ["commitCandidacyArmed"])
     fun dryRunCompile(
         plan: ValidatedPlan,
         runRequest: RunRequest,
-    ): CompileCheckResult = dryRunCompileAction.dryRunPlan(plan, runRequest)
+    ): CompileCheckResult {
+        AgentTrace.record("dryRunCompile")
+        return dryRunCompileAction.dryRunPlan(plan, runRequest)
+    }
 
-    @Action(cost = 0.00, description = "Escalate to a human when plan space is exhausted")
-    fun requestHumanDecision(blocker: UpgradeBlocker): UpgradeBlocker = requestHumanDecisionAction.request(blocker)
+    @Action(cost = 0.00, description = "Escalate to a human when plan space is exhausted", pre = ["approvalGateArmed"])
+    fun requestHumanDecision(blocker: UpgradeBlocker): UpgradeBlocker {
+        AgentTrace.record("requestHumanDecision")
+        return requestHumanDecisionAction.request(blocker)
+    }
 
     @Action(cost = 0.05, description = "Finalize: the goal BuildGreen is satisfied")
     @AchievesGoal(description = "BuildGreen: the validated upgrade builds green with tests passing")
     fun finalizeUpgrade(
         plan: ValidatedPlan,
-        build: BuildResult,
-        tests: TestResult,
+        verdict: WorkspaceVerdict,
         actionContext: ActionContext,
-    ): UpgradeComplete = finalizeUpgradeAction.finalize(plan, build, tests)
-
-    // ---------------- LLM palette (typed binding only, D6) ----------------
+    ): UpgradeComplete {
+        AgentTrace.record("finalizeUpgrade")
+        return finalizeUpgradeAction.finalize(plan, verdict)
+    }
 
     @Action(cost = 0.30, description = "Propose an upgrade plan (LLM, typed binding)")
     fun proposeUpgradePlan(
         repoModel: RepoModel,
         goal: UpgradeGoal,
         context: OperationContext,
-    ): LlmOutcome<UpgradePlan> = llmActions.proposePlan(context, repoModel, goal)
+    ): UpgradePlan {
+        AgentTrace.record("proposeUpgradePlan")
+        return unwrap("proposeUpgradePlan", llmActions.proposePlan(context, repoModel, goal))
+    }
 
     @Action(cost = 0.30, description = "Diagnose a failed build (LLM, typed binding)")
     fun diagnoseFailure(
         build: BuildResult,
         context: OperationContext,
-    ): LlmOutcome<BuildDiagnosis> = llmActions.diagnoseFailure(context, build)
+    ): BuildDiagnosis {
+        AgentTrace.record("diagnoseFailure")
+        return unwrap("diagnoseFailure", llmActions.diagnoseFailure(context, build))
+    }
 
     @Action(cost = 0.30, description = "Propose a code patch (LLM, typed binding)")
     fun proposePatch(
         diagnosis: BuildDiagnosis,
         runRequest: RunRequest,
         context: OperationContext,
-    ): LlmOutcome<CodePatch> = llmActions.proposePatch(context, diagnosis, runRequest.repoPath.toFile().readText())
+    ): CodePatch {
+        AgentTrace.record("proposePatch")
+        return unwrap("proposePatch", llmActions.proposePatch(context, diagnosis, runRequest.repoPath.toFile().readText()))
+    }
+
+    /** A failed LLM binding is a typed rejection recorded in the trace (reason
+     *  surfaced in the run output) plus the framework's replan signal — the loop
+     *  survives a bad LLM answer instead of crashing. */
+    private fun <T : Any> unwrap(
+        action: String,
+        outcome: LlmOutcome<T>,
+    ): T =
+        when (outcome) {
+            is LlmOutcome.Accepted -> {
+                outcome.value
+            }
+
+            is LlmOutcome.Rejected -> {
+                AgentTrace.record("$action:REJECTED:${outcome.rejection.checkName}:${outcome.rejection.reason}")
+                throw ReplanRequestedException(outcome.rejection.reason)
+            }
+        }
+
+    @Condition(name = "commitCandidacyArmed")
+    fun commitCandidacyArmed(operationContext: OperationContext): Boolean = commitCandidacyCondition.isArmed(operationContext)
+
+    @Condition(name = "approvalGateArmed")
+    fun approvalGateArmed(operationContext: OperationContext): Boolean = gateArmedCondition.isArmed()
 }

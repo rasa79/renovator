@@ -25,6 +25,7 @@ class PlannerOrderingIT {
             context: com.embabel.agent.api.common.OperationContext,
             repoModel: com.renovator.domain.RepoModel,
             goal: UpgradeGoal,
+            lastFailure: com.renovator.domain.BuildDiagnosis?,
         ): LlmOutcome<UpgradePlan> =
             LlmOutcome.Accepted(
                 UpgradePlan(

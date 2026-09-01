@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "type": "VersionStep",
+      "change": {
+        "groupId": "com.google.guava",
+        "artifactId": "guava",
+        "fromVersion": "31.0.1-jre",
+        "toVersion": "33.4.8-jre",
+        "scope": "MANAGEMENT"
+      }
+    },
+    {
+      "type": "VersionStep",
+      "change": {
+        "groupId": "com.google.guava",
+        "artifactId": "guava",
+        "fromVersion": "31.0.1-jre",
+        "toVersion": "33.4.8-jre",
+        "scope": "DIRECT"
+      }
+    }
+  ],
+  "rationale": "pin the transitive guava, then bump the direct dependency"
+}

@@ -46,10 +46,19 @@ open class LlmActions(
         context: com.embabel.agent.api.common.OperationContext,
         repoModel: RepoModel,
         goal: UpgradeGoal,
+        lastFailure: BuildDiagnosis? = null,
     ): LlmOutcome<UpgradePlan> =
         invokeBinding(context, bind = { runner ->
             runner.createObject<UpgradePlan>(
-                render(prompts.proposePlan(), mapOf("model" to repoModel, "goal" to goal)),
+                render(prompts.proposePlan(), mapOf("model" to repoModel, "goal" to goal))
+                    .let { prompt ->
+                        if (lastFailure == null) {
+                            prompt
+                        } else {
+                            prompt + "\n\nLast attempt failed. Build diagnosis:\n" +
+                                ProposalJson.mapper.writeValueAsString(lastFailure)
+                        }
+                    },
             )
         })
 

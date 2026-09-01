@@ -1,0 +1,23 @@
+{
+  "failedGoals": ["maven-enforcer-plugin:3.6.3:enforce"],
+  "rootCauses": [
+    {
+      "symbolOrArtifact": "com.google.guava:guava",
+      "explanation": "dependencyConvergence: the fixed guice 7.0.0 dependency transitively pins guava 31.0.1-jre while the direct dependency now targets 33.4.8-jre; the enforcer refuses two different resolved versions for one artifact."
+    },
+    {
+      "symbolOrArtifact": "31.0.1-jre",
+      "explanation": "the lagging version arrives via the guice path (guice-parent 7.0.0 pins guava 31.0.1-jre, verified against the guice-parent pom); the direct bump alone cannot win resolution."
+    }
+  ],
+  "suggestedActions": [
+    {
+      "kind": "PIN_TRANSITIVE",
+      "detail": "pin guava 33.4.8-jre in dependencyManagement so Maven resolves one version on every path"
+    },
+    {
+      "kind": "MULTI_HOP",
+      "detail": "two steps: management-scope pin first, then the direct bump"
+    }
+  ]
+}

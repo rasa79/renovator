@@ -127,12 +127,15 @@ open class UpgradeExecutor {
     }
 
     /**
-     * Applies a version change to the workspace pom. Two shapes:
-     *  - plain bump: the pom already declares groupId:artifactId -> replace its version;
-     *  - coordinate migration (groupId and/or artifactId change, e.g. the api-removal
-     *    fixture commons-lang:commons-lang -> org.apache.commons:commons-lang3): find the
-     *    dependency block whose version equals fromVersion and rewrite the whole block
-     *    (groupId, artifactId, version) to the target coordinates.
+     * Applies a version change to the workspace pom, honoring its scope:
+     *  - MANAGEMENT: upsert the artifact into `<dependencyManagement>` (create the
+     *    section when absent, before `<dependencies>` per the XSD order) — the
+     *    transitive-pin lane of the two-hop repair (Task 4.3);
+     *  - DIRECT: plain bump of the declaration block, or a coordinate migration
+     *    (groupId/artifactId change, e.g. the api-removal fixture) which rewrites
+     *    the whole block for the FROM coordinates to the TO coordinates.
+     * The management section and the dependency declarations are processed
+     * separately so a DIRECT bump never touches the management pin and vice versa.
      */
     private fun stageVersionChange(
         change: com.renovator.domain.VersionChange,
@@ -140,16 +143,89 @@ open class UpgradeExecutor {
     ) {
         val pom = workspace.path.resolve("pom.xml")
         val text = Files.readString(pom)
+        val mgmtRe = Regex("""<dependencyManagement>[\s\S]*?</dependencyManagement>""")
+        val mgmt = mgmtRe.find(text)
+        val body = if (mgmt == null) text else text.removeRange(mgmt.range)
+        val newBody =
+            when (change.scope) {
+                com.renovator.domain.ChangeScope.MANAGEMENT -> {
+                    stageManagementPin(change, body, mgmt?.value)
+                }
+
+                com.renovator.domain.ChangeScope.DIRECT -> {
+                    stageDirectBumpOrMigration(change, body)
+                }
+            }
+        val result =
+            if (mgmt == null) {
+                newBody
+            } else {
+                buildString {
+                    append(newBody.substring(0, mgmt.range.first))
+                    append(mgmt.value)
+                    append(newBody.substring(mgmt.range.first))
+                }
+            }
+        Files.writeString(pom, result)
+    }
+
+    /** MANAGEMENT lane: pin inside dependencyManagement. [body] is the pom without
+     *  the management section; [existing] is the section itself (or null). */
+    private fun stageManagementPin(
+        change: com.renovator.domain.VersionChange,
+        body: String,
+        existing: String?,
+    ): String {
+        if (existing == null) {
+            val section =
+                "    <dependencyManagement>${System.lineSeparator()}        <dependencies>${System.lineSeparator()}            <dependency>${System.lineSeparator()}                <groupId>${change.groupId}</groupId>${System.lineSeparator()}                <artifactId>${change.artifactId}</artifactId>${System.lineSeparator()}                <version>${change.toVersion}</version>${System.lineSeparator()}            </dependency>${System.lineSeparator()}        </dependencies>${System.lineSeparator()}    </dependencyManagement>${System.lineSeparator()}${System.lineSeparator()}"
+            val idx = body.indexOf("<dependencies>")
+            require(idx >= 0) { "pom has no <dependencies> section to precede with a dependencyManagement pin" }
+            return buildString {
+                append(body.substring(0, idx))
+                append(section)
+                append(body.substring(idx))
+            }
+        }
+        val entryRe =
+            Regex(
+                """<dependency>\s*<groupId>${change.groupId}</groupId>\s*<artifactId>${change.artifactId}</artifactId>\s*<version>([^<]+)</version>\s*</dependency>""",
+            )
+        val entry = entryRe.find(existing)
+        if (entry == null) {
+            // Append a new managed entry before the section's </dependencies>.
+            val newEntry =
+                "            <dependency>${System.lineSeparator()}                " +
+                    "<groupId>${change.groupId}</groupId>${System.lineSeparator()}                " +
+                    "<artifactId>${change.artifactId}</artifactId>${System.lineSeparator()}                " +
+                    "<version>${change.toVersion}</version>${System.lineSeparator()}            </dependency>${System.lineSeparator()}"
+            val close = existing.lastIndexOf("</dependencies>")
+            return existing.substring(0, close) + newEntry + existing.substring(close)
+        }
+        val bumped =
+            existing.replaceFirst(
+                entry.value,
+                entry.value.replaceFirst(
+                    Regex("""<version>${entry.groupValues[1]}</version>"""),
+                    "<version>${change.toVersion}</version>",
+                ),
+            )
+        return bumped
+    }
+
+    /** DIRECT lane: bump the declaration, or migrate coordinates when the pom does
+     *  not declare the target artifact yet (api-removal: commons-lang:commons-lang
+     *  2.6 -> org.apache.commons:commons-lang3:3.14.0). [body] excludes management. */
+    private fun stageDirectBumpOrMigration(
+        change: com.renovator.domain.VersionChange,
+        body: String,
+    ): String {
         val marker =
             Regex(
                 """(<artifactId>${change.artifactId}</artifactId>\s*<version>)[^<]+(</version>)""",
             )
-        if (marker.containsMatchIn(text)) {
-            Files.writeString(
-                pom,
-                marker.replace(text) { m -> "${m.groupValues[1]}${change.toVersion}${m.groupValues[2]}" },
-            )
-            return
+        if (marker.containsMatchIn(body)) {
+            return marker.replace(body) { m -> "${m.groupValues[1]}${change.toVersion}${m.groupValues[2]}" }
         }
         // Migration: rewrite the FROM-coordinate version block to the TO coordinates.
         val blockRe =
@@ -157,7 +233,7 @@ open class UpgradeExecutor {
                 """<dependency>\s*<groupId>([^<]+)</groupId>\s*<artifactId>([^<]+)</artifactId>\s*<version>([^<]+)</version>\s*</dependency>""",
             )
         val block =
-            blockRe.findAll(text).firstOrNull { m ->
+            blockRe.findAll(body).firstOrNull { m ->
                 m.groupValues[3] == change.fromVersion && m.groupValues[1] != change.groupId
             }
         require(block != null) {
@@ -168,12 +244,10 @@ open class UpgradeExecutor {
                 "<groupId>${change.groupId}</groupId>${System.lineSeparator()}            " +
                 "<artifactId>${change.artifactId}</artifactId>${System.lineSeparator()}            " +
                 "<version>${change.toVersion}</version>${System.lineSeparator()}        </dependency>"
-        val migrated =
-            buildString {
-                append(text.substring(0, block.range.first))
-                append(replacedBlock)
-                append(text.substring(block.range.last + 1))
-            }
-        Files.writeString(pom, migrated)
+        return buildString {
+            append(body.substring(0, block.range.first))
+            append(replacedBlock)
+            append(body.substring(block.range.last + 1))
+        }
     }
 }

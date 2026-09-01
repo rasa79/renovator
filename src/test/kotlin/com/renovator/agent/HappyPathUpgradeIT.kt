@@ -49,6 +49,7 @@ class HappyPathUpgradeIT {
             context: com.embabel.agent.api.common.OperationContext,
             repoModel: com.renovator.domain.RepoModel,
             goal: UpgradeGoal,
+            lastFailure: com.renovator.domain.BuildDiagnosis?,
         ): LlmOutcome<UpgradePlan> {
             val next = outcomes.removeFirst()
             return if (next is LlmOutcome.Accepted) {

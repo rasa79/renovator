@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "type": "VersionStep",
+      "change": {
+        "groupId": "com.google.guava",
+        "artifactId": "guava",
+        "fromVersion": "31.0.1-jre",
+        "toVersion": "33.4.8-jre",
+        "scope": "DIRECT"
+      }
+    }
+  ],
+  "rationale": "single direct bump"
+}

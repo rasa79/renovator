@@ -84,15 +84,20 @@ data class Planning(
     val goal: UpgradeGoal,
     val runRequest: RunRequest,
     val repoModel: RepoModel,
+    /** Set when this Planning frame was reached through a repair replan (Task 4.3):
+     *  the failed build's diagnosis rides the state and informs the new proposal. */
+    val lastFailure: BuildDiagnosis? = null,
 ) : UpgradeStage {
-    /** LLM proposal: returns the plan object (no transition — stays in Planning). */
+    /** LLM proposal: returns the plan object (no transition — stays in Planning).
+     *  On a replan the failure diagnosis is part of the prompt, so the second
+     *  proposal has the signal the first one lacked (PLAN §6.1 step 8). */
     @Action(cost = 0.30, description = "Propose an upgrade plan (LLM, typed binding)")
     fun proposeUpgradePlan(context: OperationContext): UpgradePlan {
         AgentTrace.record("proposeUpgradePlan")
         return when (
             val outcome =
                 com.renovator.agent.llm.LlmChannel.actions
-                    .proposePlan(context, repoModel, goal)
+                    .proposePlan(context, repoModel, goal, lastFailure)
         ) {
             is LlmOutcome.Accepted -> {
                 RunAudit.emit(
@@ -280,7 +285,7 @@ data class Repairing(
         }
     }
 
-    @Action(cost = 0.30, description = "Propose a code patch (LLM, typed binding)")
+    @Action(cost = 0.30, description = "Propose a code patch (LLM, typed binding)", pre = ["diagnosisSuggestsPatch"])
     fun proposePatch(
         diagnosis: BuildDiagnosis,
         context: OperationContext,
@@ -367,6 +372,26 @@ data class Repairing(
                 )
                 throw ReplanRequestedException(outcome.rejection.reason)
             }
+        }
+    }
+
+    /** The replan lane (Task 4.3, PLAN §6.1 steps 7-8): when the diagnosis says the
+     *  PLAN was wrong (pin a transitive, go two-hop), the state machine hands the
+     *  diagnosis back to Planning and the LLM re-proposes with the failure in
+     *  context.
+     *
+     *  DELIBERATELY condition-free (evidence in the phase-4 report): a @Condition
+     *  only sees the CURRENT blackboard, so a condition on both lanes closes them
+     *  at the moment they matter (pre-diagnosis) and the planner finds no complete
+     *  plan -> STUCK. The open replan lane is the fallback that keeps a complete
+     *  path in the model at every tick; once the diagnosis lands, the patch lane
+     *  (gated on the PATCH_CODE hint) is CHEAPER (1.10 vs 1.15 to goal) and wins
+     *  when it is open — the two-hop case never opens it, so the replan proceeds. */
+    @Action(cost = 0.05, description = "Return to planning with the failure diagnosis")
+    fun replan(diagnosis: BuildDiagnosis): Planning {
+        AgentTrace.record("replan")
+        return Planning(goal, runRequest, repoModel, lastFailure = diagnosis).also {
+            RunAudit.emit(TrajectoryEvent.StageEntered("Planning"))
         }
     }
 }

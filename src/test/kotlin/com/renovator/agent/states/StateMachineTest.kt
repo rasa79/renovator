@@ -127,13 +127,17 @@ class StateScopingTest {
             )
         val repairing = Repairing(f.goal, f.runRequest, f.repoModel, f.validatedPlan, f.snapshot, verdict, emptyList())
         // Repairing declares exactly its recovery actions — no apply/runBuild here
-        // (those belong to Applying/Verifying; C-2 state scoping).
+        // (those belong to Applying/Verifying; C-2 state scoping). The recovery
+        // lanes: patch (proposePatch) and replan (replan, Task 4.3).
         val repairingActions =
             Repairing::class.java.declaredMethods
                 .filter { it.isAnnotationPresent(com.embabel.agent.api.annotation.Action::class.java) }
                 .map { it.name }
                 .toSet()
-        assertEquals(setOf("diagnoseFailure", "proposePatch", "validatePatch"), repairingActions)
+        assertEquals(
+            setOf("diagnoseFailure", "proposePatch", "validatePatch", "replan"),
+            repairingActions,
+        )
         // And the inverse: Applying/Verifying do not expose recovery actions.
         val applyingActions =
             Applying::class.java.declaredMethods

@@ -5,6 +5,7 @@ import com.embabel.agent.api.annotation.Agent
 import com.embabel.agent.api.annotation.Condition
 import com.embabel.agent.api.common.OperationContext
 import com.renovator.agent.conditions.CommitCandidacyCondition
+import com.renovator.agent.conditions.DiagnosisHintCondition
 import com.renovator.agent.conditions.GateArmedCondition
 import com.renovator.agent.states.Analyzing
 import com.renovator.domain.RunRequest
@@ -82,9 +83,11 @@ import org.springframework.stereotype.Component
 /**
  * Renovator agent (Phase 4): the @State machine in agent/states/Stages.kt carries
  * the palette per state (LEARN[012]); this class only provides the ENTRY action
- * (analyzeRepository returns Analyzing, PLAN Task 4.1) and the two guard
- * conditions (PLAN §6). The planner enters the state machine on the first action
- * and transitions by actions returning state objects.
+ * (analyzeRepository returns Analyzing, PLAN Task 4.1) and the guard conditions
+ * (PLAN §6): the approval gates and the patch-lane selector (Task 4.3 — the
+ * diagnosis's PATCH_CODE hint opens the code-patch lane; the replan lane is the
+ * always-open fallback, see Repairing.replan). The planner enters the state
+ * machine on the first action and transitions by actions returning state objects.
  */
 
 @Agent(description = "Renovator: propose, validate, execute, observe, replan")
@@ -92,6 +95,7 @@ import org.springframework.stereotype.Component
 class RenovatorAgent(
     private val commitCandidacyCondition: CommitCandidacyCondition = CommitCandidacyCondition(),
     private val gateArmedCondition: GateArmedCondition = GateArmedCondition(),
+    private val diagnosisHintCondition: DiagnosisHintCondition = DiagnosisHintCondition(),
 ) {
     @Action(cost = 0.05, description = "Analyze the target repository (entry state)")
     fun analyzeRepository(
@@ -113,4 +117,7 @@ class RenovatorAgent(
 
     @Condition(name = "approvalGateArmed")
     fun approvalGateArmed(operationContext: OperationContext): Boolean = gateArmedCondition.isArmed()
+
+    @Condition(name = "diagnosisSuggestsPatch")
+    fun diagnosisSuggestsPatch(operationContext: OperationContext): Boolean = diagnosisHintCondition.suggestsPatch(operationContext)
 }

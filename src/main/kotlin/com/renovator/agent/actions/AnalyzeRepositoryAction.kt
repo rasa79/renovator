@@ -4,7 +4,6 @@ import com.renovator.domain.RepoModel
 import com.renovator.domain.ResolvedDependency
 import com.renovator.domain.RunRequest
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader
-import org.springframework.stereotype.Component
 import java.io.StringReader
 import java.nio.file.Files
 
@@ -13,8 +12,7 @@ import java.nio.file.Files
  * Maven Model API and produce the typed [RepoModel] the LLM planner reads.
  * No LLM, no network, no opinion — facts only.
  */
-@Component
-class AnalyzeRepositoryAction {
+object AnalyzeRepositoryAction {
     fun analyze(runRequest: RunRequest): RepoModel {
         val pom = Files.readString(runRequest.repoPath.resolve("pom.xml"))
         val model = MavenXpp3Reader().read(StringReader(pom))

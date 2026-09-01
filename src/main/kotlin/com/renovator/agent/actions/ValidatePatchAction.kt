@@ -6,7 +6,6 @@ import com.renovator.domain.ValidationRejection
 import com.renovator.validation.DiffApplyValidator
 import com.renovator.validation.PathWhitelistValidator
 import com.renovator.validation.ValidatedPatch
-import org.springframework.stereotype.Component
 import java.nio.file.Files
 
 /**
@@ -15,25 +14,17 @@ import java.nio.file.Files
  * content. The resulting [ValidatedPatch] is the only patch type the executor
  * accepts (Task 2.7 border).
  */
-@Component
-class ValidatePatchAction(
-    private val whitelist: PathWhitelistValidator = PathWhitelistValidator(),
-    private val diffs: DiffApplyValidator = DiffApplyValidator(),
-) {
-    sealed interface Outcome {
-        data class Accepted(
-            val patch: ValidatedPatch,
-        ) : Outcome
+object ValidatePatchAction {
+    private val whitelist: PathWhitelistValidator = PathWhitelistValidator()
+    private val diffs: DiffApplyValidator = DiffApplyValidator()
 
-        data class Rejected(
-            val rejection: ValidationRejection,
-        ) : Outcome
+    sealed interface Outcome {
+        data class Accepted(val patch: ValidatedPatch) : Outcome
+
+        data class Rejected(val rejection: ValidationRejection) : Outcome
     }
 
-    fun validate(
-        patch: CodePatch,
-        runRequest: RunRequest,
-    ): Outcome {
+    fun validate(patch: CodePatch, runRequest: RunRequest): Outcome {
         val l1 = whitelist.check(patch)
         if (l1 != null) {
             return Outcome.Rejected(l1)

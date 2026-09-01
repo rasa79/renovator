@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Path
 
 class AnalyzeRepositoryActionTest {
-    private val action = AnalyzeRepositoryAction()
+    private val action = AnalyzeRepositoryAction
     private val goal =
         UpgradeGoal(
             targets = listOf(DependencyTarget("org.apache.commons", "commons-lang3", "3.12.0", "3.14.0")),

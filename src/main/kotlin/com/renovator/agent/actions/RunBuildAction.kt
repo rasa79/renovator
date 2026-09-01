@@ -6,7 +6,6 @@ import com.renovator.domain.TestFailure
 import com.renovator.domain.TestResult
 import com.renovator.domain.WorkspaceVerdict
 import com.renovator.execution.DockerSandboxRunner
-import org.springframework.stereotype.Component
 import java.time.Duration
 
 /**
@@ -14,33 +13,30 @@ import java.time.Duration
  * typed test result parsed from the Maven output (PLAN §6: `runBuild`). The judge
  * stays deterministic: exit code + parsed totals, no interpretation.
  */
-@Component
-class RunBuildAction(
-    private val runner: DockerSandboxRunner = DockerSandboxRunner(RenovatorProperties().sandbox),
-) {
+object RunBuildAction {
+    private val runner: DockerSandboxRunner = DockerSandboxRunner(RenovatorProperties().sandbox)
+
+    private val TOTAL = Regex("""Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)""")
+
     fun runBuild(workspaceRef: com.renovator.execution.WorkspaceRef): WorkspaceVerdict {
         val build = runner.runBuild(workspaceRef, listOf("verify"), Duration.ofMinutes(10))
         return WorkspaceVerdict(build = build, tests = parseTests(build))
     }
 
-    companion object {
-        private val TOTAL = Regex("""Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)""")
-
-        /** The surefire aggregate line is the LAST occurrence in the output. */
-        fun parseTests(build: BuildResult): TestResult {
-            val text = build.log.head + "\n" + build.log.tail
-            val m = TOTAL.findAll(text).lastOrNull()
-            if (m == null) {
-                return TestResult(passed = 0, failed = 0, failures = emptyList())
-            }
-            val passed = m.groupValues[1].toInt()
-            val failed = m.groupValues[2].toInt() + m.groupValues[3].toInt() // Failures + Errors
-            return TestResult(passed = passed, failed = failed, failures = emptyList())
+    /** The surefire aggregate line is the LAST occurrence in the output. */
+    fun parseTests(build: BuildResult): TestResult {
+        val text = build.log.head + "\n" + build.log.tail
+        val m = TOTAL.findAll(text).lastOrNull()
+        if (m == null) {
+            return TestResult(passed = 0, failed = 0, failures = emptyList())
         }
-
-        fun markFailedTests(
-            build: BuildResult,
-            failures: List<TestFailure>,
-        ): TestResult = TestResult(passed = 0, failed = failures.size, failures = failures)
+        val passed = m.groupValues[1].toInt()
+        val failed = m.groupValues[2].toInt() + m.groupValues[3].toInt() // Failures + Errors
+        return TestResult(passed = passed, failed = failed, failures = emptyList())
     }
+
+    fun markFailedTests(
+        build: BuildResult,
+        failures: List<TestFailure>,
+    ): TestResult = TestResult(passed = 0, failed = failures.size, failures = failures)
 }

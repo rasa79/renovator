@@ -14,7 +14,8 @@ are deleted comments kept for numbering history; numbers are never reused.
 | 006 | The enforcement boundary: validation is code, not prompts | src/main/kotlin/com/renovator/execution/UpgradeExecutor.kt:16 | enforcement-boundary principle |
 | 007 | Normalize-then-match: why matching before normalizing is the classic whitelist bypass | src/main/kotlin/com/renovator/validation/PathWhitelistValidator.kt:8 | normalize-then-match whitelist |
 | 008 | A real diff library, never regex: what unified-diff context lines are FOR | src/main/kotlin/com/renovator/validation/DiffApplyValidator.kt:7 | real diff library, no regex |
-| 009 | GOAP/dynamic planning vs static graph wiring — the canonical essay | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:39 | GOAP vs static graph |
-| 010 | Action-cost asymmetry: the planner prefers plans that fail cheap | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:80 | cost asymmetry, fail cheap |
-| 011 | The typed blackboard is workflow-engine process variables | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:145 | typed blackboard = BPMN process variables |
+| 009 | GOAP/dynamic planning vs static graph wiring — the canonical essay | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:21 | GOAP vs static graph |
+| 010 | Action-cost asymmetry: the planner prefers plans that fail cheap | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:48 | cost asymmetry, fail cheap |
+| 011 | The typed blackboard is workflow-engine process variables | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:69 | typed blackboard = BPMN process variables |
+| 012 | @State loops: state scoping and why clearBlackboard = true exists | src/main/kotlin/com/renovator/agent/states/Stages.kt:34 | @State loop semantics |
 | 017 | LLM retry taxonomy: which HTTP errors are retryable and why | src/main/kotlin/com/renovator/agent/llm/LlmCall.kt:3 | retry taxonomy for LLM APIs |

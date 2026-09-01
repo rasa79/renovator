@@ -1,6 +1,13 @@
 package com.renovator.agent
 
 import com.embabel.agent.api.annotation.Action
+import com.renovator.agent.states.Analyzing
+import com.renovator.agent.states.Applying
+import com.renovator.agent.states.Blocked
+import com.renovator.agent.states.Done
+import com.renovator.agent.states.Planning
+import com.renovator.agent.states.Repairing
+import com.renovator.agent.states.Verifying
 import com.renovator.config.RenovatorProperties
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -27,16 +34,28 @@ class ActionCostTableTest {
             "finalizeUpgrade" to 0.05,
         )
 
-    private val annotated: Map<String, Double> =
-        RenovatorAgent::class.java.declaredMethods
+    private fun actionsOf(clazz: Class<*>): Map<String, Double> =
+        clazz.declaredMethods
             .mapNotNull { m ->
                 val ann = m.getAnnotation(Action::class.java) ?: return@mapNotNull null
                 m.name to ann.cost
             }.toMap()
 
+    private val annotated: Map<String, Double> =
+        actionsOf(RenovatorAgent::class.java) +
+            listOf(
+                com.renovator.agent.states.Analyzing::class.java,
+                com.renovator.agent.states.Planning::class.java,
+                com.renovator.agent.states.Applying::class.java,
+                com.renovator.agent.states.Verifying::class.java,
+                com.renovator.agent.states.Repairing::class.java,
+                com.renovator.agent.states.Blocked::class.java,
+                com.renovator.agent.states.Done::class.java,
+            ).flatMap { actionsOf(it).toList() }.toMap()
+
     @Test
     fun `every action declares a cost matching the plan table`() {
-        assertEquals(paletteCosts.keys, annotated.keys, "annotated actions must match the §6 table exactly")
+        assertEquals(paletteCosts.keys, annotated.keys - setOf("resume"), "annotated actions must match the §6 table exactly (resume is the Phase-5 HITL continuation)")
         for ((name, cost) in paletteCosts) {
             assertEquals(cost, annotated[name] ?: -1.0, 0.0001, "cost for $name must match the §6 table")
         }

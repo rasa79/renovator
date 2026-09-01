@@ -40,8 +40,8 @@ the mechanism holds). The trace below carries the drift coordinates.
 The two `PlanAttempted` lines verbatim (the reviewer-mandated quote):
 
 ```
-{"seq":3,"event":{"eventType":"PlanAttempted","rationale":"single direct bump","stepCount":1,"at":"2026-09-01T11:09:51.291268805Z"}}
-{"seq":13,"event":{"eventType":"PlanAttempted","rationale":"pin the transitive guava, then bump the direct dependency","stepCount":2,"at":"2026-09-01T11:09:54.506771236Z"}}
+{"seq":3,"event":{"eventType":"PlanAttempted","rationale":"single direct bump","stepCount":1,"at":"2026-09-01T13:49:20.810708465Z"}}
+{"seq":13,"event":{"eventType":"PlanAttempted","rationale":"pin the transitive guava, then bump the direct dependency","stepCount":2,"at":"2026-09-01T13:49:23.522291342Z"}}
 ```
 
 ## What the trace shows

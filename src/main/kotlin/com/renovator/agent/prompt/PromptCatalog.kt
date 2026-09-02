@@ -39,6 +39,14 @@ class PromptCatalog {
 
     fun proposePlan(): String = load("propose_plan")
 
+    // TODO(review) KL-13: the repair-path prompts (diagnose_failure.st,
+    // propose_patch.st) still carry bare placeholder values ("name", "<path>",
+    // "…", "-context") — the same-class prompt-grounding issue as LEARN[018]'s
+    // proposal prompt. Observed: under gpt-4.1 the non-floor fixtures'
+    // repair-diagnosis typed binding failed ~9 attempts (live eval, phase-6).
+    // Live (not fixed in phase 7 — docs/audit only); the same grounded-exemplar
+    // treatment the proposal prompt got is the candidate fix, if the human
+    // decides to apply it (KNOWN_LIMITATIONS KL-13).
     fun diagnoseFailure(): String = load("diagnose_failure")
 
     fun proposePatch(): String = load("propose_patch")

@@ -17,6 +17,7 @@ object RunAudit {
     var runId: String? = null
 
     fun emit(event: TrajectoryEvent) {
+        com.renovator.observability.RenovatorMetrics.observe(event, runId)
         runId?.let { id ->
             val seq = store.append(id, event)
             TrajectoryBus.publish(

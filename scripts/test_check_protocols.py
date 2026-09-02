@@ -193,3 +193,54 @@ class LedgerOrderRuleTest(unittest.TestCase):
             violations = []
             chk.check_ledger_order(Path(td), violations)
             self.assertTrue(any("KNOWN_LIMITATIONS.md" in v and "KL-10" in v for v in violations))
+
+
+class LedgerShapeRuleTest(unittest.TestCase):
+    HEADER = "| KL-NN | Title | User-visible | Pre-declared | Rationale |\n"
+
+    def test_accepts_well_formed_kl_table(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write(
+                "KNOWN_LIMITATIONS.md",
+                self.HEADER
+                + "| KL-10 | x | user-visible: no | pre-declared: yes | r |\n"
+                + "| ~~KL-12~~ | y | user-visible: no | CLOSED (phase-3.2) | implemented |\n"
+                + "| KL-13 | z | user-visible: no | pre-declared: no | r |\n",
+            )
+            violations = []
+            chk.check_ledger_shape(Path(td), violations)
+            self.assertEqual([], violations)
+
+    def test_rejects_kl_row_split_across_lines(self):
+        # The exact bug class: the number cell alone on its own line, the rest
+        # of the row's cells dangling after the NEXT row (outside the table).
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write(
+                "KNOWN_LIMITATIONS.md",
+                self.HEADER
+                + "| KL-10 | x | user-visible: no | pre-declared: yes | r |\n"
+                + "| ~~KL-12~~ |\n"
+                + "| KL-13 | z | user-visible: no | pre-declared: no | r |\n"
+                + "  dangling cells | user-visible: no | CLOSED (phase-3.2) | implemented |\n",
+            )
+            violations = []
+            chk.check_ledger_shape(Path(td), violations)
+            self.assertTrue(
+                any("has 1 cells" in v and "~~KL-12~~" in v for v in violations),
+                f"expected the split KL-12 row to be flagged, got: {violations}",
+            )
+
+    def test_rejects_row_with_wrong_cell_count(self):
+        with tempfile.TemporaryDirectory() as td:
+            fx = CheckerFixture(Path(td))
+            fx.write(
+                "KNOWN_LIMITATIONS.md",
+                self.HEADER
+                + "| KL-10 | x | user-visible: no | pre-declared: yes | r |\n"
+                + "| KL-06 | y | user-visible: no |\n",  # only 3 cells
+            )
+            violations = []
+            chk.check_ledger_shape(Path(td), violations)
+            self.assertTrue(any("has 3 cells" in v and "KL-06" in v for v in violations))

@@ -353,6 +353,42 @@ def check_ledger_order(root: Path, violations: list[str]):
             seen.append(n)
 
 
+def check_ledger_shape(root: Path, violations: list[str]):
+    """Mechanical invariant (Task 3.9 / reviewer mandate): every data row in a
+    markdown table must have the SAME number of cells as the header row, so the
+    table renders properly (no dangling cells outside the table). This catches
+    the exact bug class of a KL row that split across lines — e.g. the KL-12 row
+    whose number cell sat alone on one line and whose remaining cells dangled
+    after the next row, outside the table. Struck-through rows are checked too:
+    they are still real table rows and must have the matching cell count. A row
+    is a table row iff it starts with '|' on its own line; the separator row
+    (|---|...) is skipped by matching the header cell count is not required there
+    (its cells are dashes)."""
+    ledgers = ("LEARN_INDEX.md", "KNOWN_LIMITATIONS.md")
+    for name in ledgers:
+        text = read_text(root / name)
+        if text is None:
+            continue
+        header_cells: int | None = None
+        for line_no, line in enumerate(text.splitlines(), 1):
+            if not line.startswith("|"):
+                continue
+            # Count cells: a row is "| a | b |" -> 2 cells (split on '|', strip empties).
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            # Skip a header row we haven't set yet: it DEFINES the expected count.
+            if header_cells is None:
+                header_cells = len(cells)
+                continue
+            # Separator row: cells are all dashes/colons; skip (renders regardless).
+            if cells and all(set(c) <= {"-", ":"} for c in cells if c):
+                continue
+            if len(cells) != header_cells:
+                violations.append(
+                    f"{name}: row at line {line_no} has {len(cells)} cells but header has {header_cells} "
+                    f"({cells[0] if cells else '(empty)'} — a row split across lines leaves dangling cells outside the table)"
+                )
+
+
 def check_phase_boundary(root: Path, violations: list[str]):
     status = git(root, "status", "--porcelain").stdout
     if status.strip():
@@ -386,6 +422,7 @@ def main() -> int:
     check_learn(root, violations, full=args.full)
     check_no_verify(root, violations)
     check_ledger_order(root, violations)
+    check_ledger_shape(root, violations)
     check_deferred(root, files, check_readme=args.full or phase >= 7, violations=violations, verbose=args.verbose)
     check_prompts(root, phase, violations)
     if args.phase_boundary:

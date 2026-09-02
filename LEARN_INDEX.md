@@ -23,7 +23,6 @@ are deleted comments kept for numbering history; numbers are never reused.
 | 015 | The observable loop: replay-then-tail, and WaitFor as the BPMN human task | src/main/kotlin/com/renovator/api/RunService.kt:21 | SSE replay-then-tail + WaitFor BPMN task |
 | 016 | The audit trail is a feature: persist every decision before any UI exists | src/main/kotlin/com/renovator/audit/TrajectoryStore.kt:9 | audit trail as a feature |
 | 017 | LLM retry taxonomy: which HTTP errors are retryable and why | src/main/kotlin/com/renovator/agent/llm/LlmCall.kt:3 | retry taxonomy for LLM APIs |
-
 | 018 | Placeholder-echo: LLMs imitate the exemplar's VALUES, not its intent | src/main/kotlin/com/renovator/agent/prompt/PromptCatalog.kt:5 | grounded prompt exemplars |
 | 019 | Register metrics eagerly so the scrape's meter-name set is STABLE, not state-dependent | src/main/kotlin/com/renovator/observability/RenovatorMetrics.kt:11 | stable meter-name set (register-up-front) |
 | 020 | Drain the async executor: a test-created RunService must close() | src/main/kotlin/com/renovator/api/RunService.kt:292 | drain-or-leak (async executor) |

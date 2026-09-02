@@ -193,8 +193,8 @@ class KillResumeIT {
         RunAudit.clear()
         RunAudit.runId = runId
         LlmChannel.actions = ScriptedLlm()
+        val service = RunService(platform(), explicitAgent = metadata(), repository = JsonFileAgentProcessRepository())
         try {
-            val service = RunService(platform(), explicitAgent = metadata(), repository = JsonFileAgentProcessRepository())
             val resumed = service.resume(runId)
             assertNotNull(resumed.resultOfType(UpgradeComplete::class.java), "the continuation must complete the upgrade")
             val lines = TrajectoryStore().read(runId)
@@ -209,6 +209,7 @@ class KillResumeIT {
         } finally {
             LlmChannel.actions = LlmActions()
             RunAudit.clear()
+            service.close()
         }
     }
 }

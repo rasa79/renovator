@@ -111,8 +111,8 @@ class ApprovalGateIT {
     fun `process parks at the commit-candidate gate until approved, then finalizes`() {
         ScriptedLlm.canned = cannedPlan()
         LlmChannel.actions = ScriptedLlm()
+        val svc = service(armedApprovals())
         try {
-            val svc = service(armedApprovals())
             val runId = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
             await(
                 { svc.pendingDecision(runId) != null },
@@ -137,6 +137,7 @@ class ApprovalGateIT {
             LlmChannel.actions = LlmActions()
             com.renovator.audit.RunAudit
                 .clear()
+            svc.close()
         }
     }
 
@@ -144,8 +145,8 @@ class ApprovalGateIT {
     fun `rejection routes to Repairing with the human comment on the blackboard`() {
         ScriptedLlm.canned = cannedPlan()
         LlmChannel.actions = ScriptedLlm()
+        val svc = service(armedApprovals())
         try {
-            val svc = service(armedApprovals())
             val runId = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
             await(
                 { svc.pendingDecision(runId) != null },
@@ -169,6 +170,7 @@ class ApprovalGateIT {
             LlmChannel.actions = LlmActions()
             com.renovator.audit.RunAudit
                 .clear()
+            svc.close()
         }
     }
 
@@ -176,8 +178,8 @@ class ApprovalGateIT {
     fun `gate disarmed by config means no park`() {
         ScriptedLlm.canned = cannedPlan()
         LlmChannel.actions = ScriptedLlm()
+        val svc = service(RenovatorProperties.Approvals(plan = false, commitCandidate = false))
         try {
-            val svc = service(RenovatorProperties.Approvals(plan = false, commitCandidate = false))
             val runId = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
             await(
                 { svc.trajectory(runId).any { it.contains("\"terminal\":\"UpgradeComplete\"") } },
@@ -191,6 +193,7 @@ class ApprovalGateIT {
             LlmChannel.actions = LlmActions()
             com.renovator.audit.RunAudit
                 .clear()
+            svc.close()
         }
     }
 }

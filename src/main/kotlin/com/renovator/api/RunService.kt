@@ -73,7 +73,7 @@ class RunService(
     private val registry: RunRegistry = RunRegistry(),
     private val executor: ExecutorService =
         Executors.newFixedThreadPool(1) { r -> Thread(r, "renovator-run").apply { isDaemon = true } },
-) {
+) : AutoCloseable {
     private val processes = ConcurrentHashMap<String, AgentProcess>()
     private val store: TrajectoryStore = TrajectoryStore()
 
@@ -287,6 +287,41 @@ class RunService(
             }
         }
         return status(runId)
+    }
+
+    // LEARN[020] Drain the async executor: a test-created RunService must close()
+    // Why this way: the agent runs on a single-thread DAEMON executor that is never
+    //   naturally stopped. A test that submits a run and returns before that run
+    //   fully drains leaves its worker thread executing into the NEXT test class —
+    //   and because LlmChannel.actions, AgentTrace and RunAudit are process-global
+    //   singletons, that still-running thread is swapped to whatever the next test
+    //   sets: it drains the next test's ScriptedLlm plan queue (so the next run gets
+    //   the wrong plan or an empty queue) or, once the next test resets the channel
+    //   to the real LlmActions, it makes real LLM calls that fail
+    //   (InvocationTargetException) and replan forever. That is a genuinely
+    //   order-dependent failure — a fresh-clone reproduction exposed it because the
+    //   clone's surefire order runs a RunService test before TwoHopReplanIT, while
+    //   the main repo's order runs TwoHopReplanIT first and hides it. The fix: every
+    //   test that constructs a RunService closes it in a finally, and close()
+    //   terminates any still-live process (unblocking the worker) and shuts the
+    //   executor down, so no agent thread survives into a later test class.
+    // Good sides: a Hermetic, order-independent suite (the gate is reproducible);
+    //   production (the Spring @Component) is unaffected — there is no "next test"
+    //   to corrupt, and the executor lives for the JVM lifetime as intended.
+    // Drawbacks: close() interrupts an in-flight run, so a test must assert whatever
+    //   it needs before finally — which the tests already do (they poll to Done).
+    // Concept: drain-or-leak — an async executor that nothing shuts down is a
+    //   thread that can outlive its test.
+    // See also: LEARN[015] (the RunService observable loop), PLAN Task 5.1,
+    //   RunServiceIT, ApprovalGateIT, KillResumeIT
+    override fun close() {
+        // Terminate any still-live processes so the worker thread unblocks (the
+        // agent's run() returns a terminal state rather than parking forever).
+        processes.values.forEach { proc ->
+            runCatching { proc.terminateAgent("RunService closed (drain)") }
+        }
+        executor.shutdownNow()
+        processes.clear()
     }
 }
 

@@ -13,6 +13,7 @@ import com.renovator.domain.RunRequest
 import com.renovator.domain.UpgradeGoal
 import com.renovator.domain.UpgradePlan
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -90,8 +91,8 @@ class RunServiceIT {
     fun `an async submit transitions the run to Done and exposes the final stage`() {
         ScriptedLlm.canned = cannedPlan()
         LlmChannel.actions = ScriptedLlm()
+        val svc = service()
         try {
-            val svc = service()
             val runId = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
             assertTrue(runId.startsWith("run-"), "a typed run id: $runId")
 
@@ -114,6 +115,7 @@ class RunServiceIT {
             )
         } finally {
             LlmChannel.actions = LlmActions()
+            svc.close()
         }
     }
 
@@ -121,8 +123,8 @@ class RunServiceIT {
     fun `a second concurrent submission is rejected (KL-01 409 path)`() {
         ScriptedLlm.canned = cannedPlan()
         LlmChannel.actions = ScriptedLlm()
+        val svc = service()
         try {
-            val svc = service()
             val first = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
             // The first run is still active (async): the gate must refuse.
             val thrown =
@@ -130,18 +132,33 @@ class RunServiceIT {
                     svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
                 }
             assertTrue(thrown.message!!.contains("single-run enforcement"), "verbatim KL-01 reason: ${thrown.message}")
-            // Once the first run drains, a new submission is accepted again.
+            // Once the first run drains, a new submission is accepted again. The
+            // run's Done frame is visible BEFORE the executor thread finishes
+            // finalize + repository.update + registry.finish, so poll the GATE
+            // (a submit that succeeds) rather than the stage — polling the stage
+            // races the finally() and can still see the slot active.
             val deadline =
                 System.nanoTime() +
                     java.util.concurrent.TimeUnit.SECONDS
                         .toNanos(120)
-            while (System.nanoTime() < deadline && svc.status(first).stage != "Done") {
-                Thread.sleep(100)
+            var second: String? = null
+            while (System.nanoTime() < deadline && second == null) {
+                if (svc.status(first).stage == "Done") {
+                    try {
+                        second = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
+                    } catch (_: ConflictException) {
+                        // still draining; retry
+                    }
+                }
+                if (second == null) {
+                    Thread.sleep(100)
+                }
             }
-            val second = svc.submit(goal(), RunRequest(Path.of("fixtures/fixture-clean"), goal()))
-            assertTrue(second.startsWith("run-"), "the slot frees after completion: $second")
+            assertNotNull(second, "the slot frees after completion (stage never reached Done)")
+            assertTrue(second!!.startsWith("run-"), "the slot frees after completion: $second")
         } finally {
             LlmChannel.actions = LlmActions()
+            svc.close()
         }
     }
 }

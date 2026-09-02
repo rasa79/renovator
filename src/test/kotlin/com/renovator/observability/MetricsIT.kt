@@ -72,7 +72,8 @@ class PrometheusMetricsIT {
         assertEquals("UpgradeComplete", runId.terminal)
 
         val body =
-            RestClient.create()
+            RestClient
+                .create()
                 .get()
                 .uri("http://localhost:$port/actuator/prometheus")
                 .retrieve()
@@ -86,7 +87,10 @@ class PrometheusMetricsIT {
         )) {
             assertTrue(body.contains(name), "missing $name in scrape:\n${body.take(400)}")
         }
-        assertTrue(body.contains("renovator_time_to_green_seconds") || body.contains("renovator_time_to_green"), "the timer in scrape: ${body.take(400)}")
+        assertTrue(
+            body.contains("renovator_time_to_green_seconds") || body.contains("renovator_time_to_green"),
+            "the timer in scrape: ${body.take(400)}",
+        )
         println("PROMETHEUS SCRAPE sample: ${body.lines().filter { it.startsWith("renovator_") }.take(6)}")
     }
 }

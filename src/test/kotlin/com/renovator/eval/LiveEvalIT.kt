@@ -76,8 +76,11 @@ class LiveEvalIT {
         val terminal =
             when {
                 lines.any { it.contains("\"terminal\":\"UpgradeComplete\"") } -> "UpgradeComplete"
+
                 lines.any { it.contains("\"kind\":\"UpgradeBlocker\"") } -> "UpgradeBlocker"
-                else -> lines.lastOrNull()?.let { "incomplete(${it.take(80)})" } ?: "no-events"  // a parked/WAITING run has no terminal event
+
+                // A parked/WAITING run has no terminal event; report the last event.
+                else -> lines.lastOrNull()?.let { "incomplete(${it.take(80)})" } ?: "no-events"
             }
         println("LIVE EVAL $fixture: attempts=$attempts durationMs=$durationMs terminal=$terminal")
         return EvalRunner.RunResult(runId = runId, terminal = terminal, stages = stages, attempts = attempts)
@@ -106,7 +109,7 @@ class LiveEvalIT {
             "LIVE EVAL: floor (clean + no-path) " +
                 (if (floor.getValue("fixture-clean").pass && floor.getValue("fixture-no-path").pass) "PASS" else "FAIL") +
                 "; reported: " +
-                fixtures.joinToString { "${it}=${details.getValue(it).terminal}" },
+                fixtures.joinToString { "$it=${details.getValue(it).terminal}" },
         )
     }
 }

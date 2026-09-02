@@ -107,6 +107,37 @@ renovator_time_to_green_seconds
 
 **Restate (in my own words):** a trajectory is the only surviving record of an emergent agent's decisions, so it is written *first* — every proposal, rejection, build, and escalation appended as a typed, sequence-numbered, JSON line the moment it happens, with an interrupted-write-safe counter so even a killed JVM leaves a coherent story. Because the record is immutable and typed, the eval harness can judge it, the SSE/CLI can replay it, and a reviewer can query "show me every decision" without prose. The cost is growth and a single-process scope; the payoff is that the agent is explainable after the fact, not only while it runs.
 
+## D13 live floor — remediation (gpt-4.1 comparison) — floor STILL NOT MET
+
+The D13 live floor (fixture-clean + fixture-no-path) was re-run under a stronger model
+(`gpt-4.1`, config-only change; key unchanged). The gpt-4.1-mini baseline is retained
+untouched at `eval/reports/2026-09-02-live-mini.md`. New run: `eval/reports/2026-09-02-live.md`.
+
+**Comparison (model × fixture × outcome, live-call counts per run):**
+
+| model | fixture | verdict | terminal | attempts | live calls |
+|---|---|---|---|---|---|
+| gpt-4.1-mini | fixture-clean | FAIL | no green (model proposed a migration the fixture lacks) | 1 | 1 |
+| gpt-4.1-mini | fixture-no-path | FAIL | no blocker (plan drifted off the 99.99.99 target) | 2 | 2 |
+| gpt-4.1 | fixture-clean | FAIL | UpgradeBlocker (expected UpgradeComplete) | 5 | 1 |
+| gpt-4.1 | fixture-no-path | PASS | UpgradeBlocker | 5 | 1 |
+| gpt-4.1 | fixture-api-removal | FAIL | UpgradeBlocker | 5 | 1 |
+| gpt-4.1 | fixture-transitive-conflict | FAIL | UpgradeBlocker | 5 | 1 |
+
+**Diagnosis shift — toward prompt/harness, not model capability.** Under gpt-4.1 the
+validate rejections name **placeholder coordinates the model echoed from the proposal
+schema** — the fixture-clean run (and the others) is rejected with e.g.
+`version target-artifact:2.0.0 does not exist in the version catalog`,
+`version sample-artifact:2.0.0 does not exist`, and `version ...:... does not exist`.
+The live model is not grounded on the real fixture repo model / goal — it emits the
+proposal template's `...` / placeholder values, L3 rejects them, and every fixture
+escalates to the blocker (5 attempts). This is **not** primarily a model-capability
+signal: the proposal prompt's placeholder shape + the live model's freedom to invent
+coordinates is the harness/prompt interaction. Per the remediation instruction, the
+floor failing under the stronger model **stops the phase**: the human decides the next
+move (prompt grounding work, or explicitly amending D13). The mock gate (4/4, canned
+pre-validated plans) is unaffected and remains the deterministic CI signal.
+
 ## §13.3 drift disclosure (Phase 6)
 
 - **Live-model plan-following**: the configured `gpt-4.1-mini` does not reliably produce valid plans for the fixtures (proposes dependency migrations the fixture lacks — recorded above). This is the model + prompt at the current pin; the mock gate is the deterministic signal.

@@ -1,7 +1,9 @@
 # Phase 4 report — Replanning & states (the centerpiece)
 
-- Date: 2026-09-01; Executor: dsh Standard; Branch state at gate: `7ec3232` (clean tree)
-- Tasks: 4.1 `21e79e4`, 4.2 `082f436`, 4.3 `69d4107`, 4.4 `4e03589`, 4.5 `7ec3232`
+- Date: 2026-09-02 (gate rerun after remediation); Executor: dsh Standard;
+  Branch state at gate: `11877de` (clean tree)
+- Tasks: 4.1 `21e79e4`, 4.2 `082f436`, 4.3 `69d4107`, 4.4 `4e03589`, 4.5 `7ec3232`,
+  gate `71bbc1b`, remediation `11877de`
 
 ## Gate evidence
 

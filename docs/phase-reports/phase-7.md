@@ -173,3 +173,41 @@ Task 7.2's "every number 001–016" is stale — the live LEARN set is `001–02
 LEARN[017] (retry taxonomy), LEARN[018] (placeholder-echo), LEARN[019] (register metrics
 eagerly) and LEARN[020] (drain the async executor). The audit checks the actual set (all
 present, ascending, one location each), which is complete.
+
+## Addendum — randomized-order reproducibility evidence (reviewer strengthener)
+
+After the Phase-7 gate, the reviewer accepted the hermeticity fix but noted the stated bar
+called for a randomized-order run. This is the strengthener, added **evidence-only**: no test,
+source, or gate configuration was changed (git diff is confined to this report).
+
+Command (fresh clone from HEAD `a40080a`, run in `/tmp/renovator-clone4`):
+
+```
+./mvnw -Peval-mock,docker-it -Dsurefire.runOrder=random -Dsurefire.runOrder.random.seed=42 verify
+```
+
+Surefire confirms the ordering is genuinely shuffled (verbatim from the log), not a default-order
+run that merely accepted the property:
+
+```
+[INFO] Tests will run in random order. To reproduce ordering use flag -Dsurefire.runOrder.random.seed=42
+```
+
+Result (verbatim):
+
+```
+[INFO] Tests run: 149, Failures: 0, Errors: 0, Skipped: 3
+[INFO] BUILD SUCCESS
+```
+
+54 of the 57 run classes changed position relative to the default filesystem order (first
+class default `com.renovator.domain.ResultTypesTest`, first class random
+`com.renovator.validation.DomainInvariantValidatorTest`) — the run is genuinely shuffled, not
+a default-order run that accepted the property. The two tests the original clone reproduction
+failed on — `PrometheusMetricsIT` (lazy meter registration; default position 21 → random
+position 38) and `TwoHopReplanIT` (undrained async executor; default position 35 → random
+position 40) — both ran **and passed** under random order. This demonstrates the hermeticity
+fix is order-independent: it is stable under an arbitrary, seed-reproducible test ordering,
+not merely under the single default order or the specific adverse clone order that exposed
+it. Combined with the serial main + clone runs, the gate is reproducibly green.
+

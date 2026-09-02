@@ -47,6 +47,10 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
 
         <!-- Maven Model API + ComparableVersion for Layer 3 (§3 pins; 4.0.0-rc-* excluded) -->
         <dependency>
@@ -239,6 +243,18 @@
                     </plugin>
                 </plugins>
             </build>
+        </profile>
+        <!-- The mock-eval gate (PLAN Task 6.1): `-Peval-mock,docker-it verify` runs
+             the eval suite as a hard CI gate (4/4 or the build fails). Declared as
+             a marker profile — the eval ITs run with the docker-it includes. -->
+        <profile>
+            <id>eval-mock</id>
+        </profile>
+        <!-- The live-eval floor (PLAN Task 6.2): `-Peval-live,docker-it verify` with
+             LLM_SMOKE=1 + provider env — never a default build; one live call per
+             gated fixture run. -->
+        <profile>
+            <id>eval-live</id>
         </profile>
         <!-- Live-LLM *IT tests (requires real provider credentials; D13) -->
         <profile>

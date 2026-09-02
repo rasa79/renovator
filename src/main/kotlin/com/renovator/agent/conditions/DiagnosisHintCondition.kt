@@ -3,6 +3,7 @@ package com.renovator.agent.conditions
 import com.embabel.agent.api.common.OperationContext
 import com.renovator.domain.BuildDiagnosis
 import com.renovator.domain.HintKind
+import org.springframework.stereotype.Component
 
 /**
  * Repair-lane gates (PLAN Tasks 4.3/4.4): the recovery loop reacts to a failure
@@ -20,6 +21,7 @@ import com.renovator.domain.HintKind
  * choice is deterministic and the cost-based tie the planner would otherwise
  * break arbitrarily never happens.
  */
+@Component
 class DiagnosisHintCondition {
     /** Safe blackboard read (proven pattern, same as CommitCandidacyCondition). */
     private fun diagnosis(context: OperationContext): BuildDiagnosis? = context.objects.filterIsInstance<BuildDiagnosis>().lastOrNull()

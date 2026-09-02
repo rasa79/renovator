@@ -1,12 +1,14 @@
 package com.renovator.agent.conditions
 
 import com.renovator.config.RenovatorProperties
+import org.springframework.stereotype.Component
 
 /**
  * `approvalGateArmed` guard (PLAN §6, D11): whether any HITL approval gate is
  * armed by config (renovator.approvals.*). Defaults: both disarmed, so Phase 3-4
  * mock flows reach UpgradeComplete without a human; Phase 5 arms the gates.
  */
+@Component
 class GateArmedCondition(
     private val properties: RenovatorProperties = RenovatorProperties(),
 ) {

@@ -96,10 +96,9 @@ class RenovatorAgent(
     private val commitCandidacyCondition: CommitCandidacyCondition = CommitCandidacyCondition(),
     private val gateArmedCondition: GateArmedCondition = GateArmedCondition(),
     private val diagnosisHintCondition: DiagnosisHintCondition = DiagnosisHintCondition(),
-    private val budget: com.renovator.config.RenovatorProperties.Budget =
-        com.renovator.config
-            .RenovatorProperties()
-            .budget,
+    @org.springframework.beans.factory.annotation.Autowired
+    private val renovatorProperties: com.renovator.config.RenovatorProperties =
+        com.renovator.config.RenovatorProperties(),
 ) {
     @Action(cost = 0.05, description = "Analyze the target repository (entry state)", pre = ["freshRun"])
     fun analyzeRepository(
@@ -113,7 +112,9 @@ class RenovatorAgent(
                 com.renovator.audit.TrajectoryEvent
                     .StageEntered("Analyzing"),
             )
-        return Analyzing(goal, runRequest)
+        // The approval-gate config (D11) rides every frame from here (the state
+        // machine has no DI — the entry is the once-only read point).
+        return Analyzing(goal, runRequest, approvals = renovatorProperties.approvals)
     }
 
     @Condition(name = "commitCandidacyArmed")
@@ -129,6 +130,31 @@ class RenovatorAgent(
     @Condition(name = "freshRun")
     fun freshRun(operationContext: OperationContext): Boolean =
         operationContext.objects.none { it is com.renovator.agent.states.UpgradeStage }
+
+    /** Task 5.3 (D11): the gate's park action is plannable only while NO decision
+     *  is present — once the REST layer has answered (the C-6 fallback re-seeds
+     *  the continuation with the decision on the board), the park closes and the
+     *  planner picks approve/reject. Same board-read pattern as commitCandidacy. */
+    @Condition(name = "gateUnresolved")
+    fun gateUnresolved(operationContext: OperationContext): Boolean =
+        operationContext.objects.none { it is com.renovator.domain.HumanDecision }
+
+    /** Task 5.3: the decision's VALUE picks the continuation — the board carries
+     *  the re-seeded HumanDecision, and approve/reject are open by flag (the
+     *  planner cannot value-discriminate; the conditions can). */
+    @Condition(name = "humanApproved")
+    fun humanApproved(operationContext: OperationContext): Boolean =
+        operationContext.objects
+            .filterIsInstance<com.renovator.domain.HumanDecision>()
+            .lastOrNull()
+            ?.approved == true
+
+    @Condition(name = "humanRejected")
+    fun humanRejected(operationContext: OperationContext): Boolean =
+        operationContext.objects
+            .filterIsInstance<com.renovator.domain.HumanDecision>()
+            .lastOrNull()
+            ?.approved == false
 
     @Condition(name = "diagnosisSuggestsPatch")
     fun diagnosisSuggestsPatch(operationContext: OperationContext): Boolean = diagnosisHintCondition.suggestsPatch(operationContext)
@@ -147,5 +173,5 @@ class RenovatorAgent(
                 .lastOrNull()
                 ?.attempts
                 ?.size ?: 0
-        ) >= budget.maxAttempts
+        ) >= renovatorProperties.budget.maxAttempts
 }

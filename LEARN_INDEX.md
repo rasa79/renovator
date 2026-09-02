@@ -17,7 +17,8 @@ are deleted comments kept for numbering history; numbers are never reused.
 | 009 | GOAP/dynamic planning vs static graph wiring — the canonical essay | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:15 | GOAP vs static graph |
 | 010 | Action-cost asymmetry: the planner prefers plans that fail cheap | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:42 | cost asymmetry, fail cheap |
 | 011 | The typed blackboard is workflow-engine process variables | src/main/kotlin/com/renovator/agent/RenovatorAgent.kt:63 | typed blackboard = BPMN process variables |
-| 012 | @State loops: state scoping and why clearBlackboard = true exists | src/main/kotlin/com/renovator/agent/states/Stages.kt:38 | @State loop semantics |
+| 012 | @State loops: state scoping and why clearBlackboard = true exists | src/main/kotlin/com/renovator/agent/states/Stages.kt:40 | @State loop semantics |
 | 013 | JVM process persistence: the repository SPI over typed snapshots — what it buys vs Sentinel's Postgres checkpointer | src/main/kotlin/com/renovator/persistence/RunSnapshot.kt:12 | typed process snapshot vs DB checkpointer |
 | 014 | Honest termination: the attempt budget is a framework mechanism, not a convention | src/main/kotlin/com/renovator/config/ProcessOptionsFactory.kt:6 | bounded early termination (framework policy) |
+| 015 | The observable loop: replay-then-tail, and WaitFor as the BPMN human task | src/main/kotlin/com/renovator/api/RunService.kt:21 | SSE replay-then-tail + WaitFor BPMN task |
 | 017 | LLM retry taxonomy: which HTTP errors are retryable and why | src/main/kotlin/com/renovator/agent/llm/LlmCall.kt:3 | retry taxonomy for LLM APIs |

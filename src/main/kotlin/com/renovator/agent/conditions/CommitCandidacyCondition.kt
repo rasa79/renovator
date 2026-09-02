@@ -4,6 +4,7 @@ import com.embabel.agent.api.common.OperationContext
 import com.renovator.domain.TestResult
 import com.renovator.validation.ValidatedPatch
 import com.renovator.validation.ValidatedPlan
+import org.springframework.stereotype.Component
 
 /**
  * `commitCandidacyArmed` guard (PLAN §6): the dry-run compile is the expensive L4
@@ -11,6 +12,7 @@ import com.renovator.validation.ValidatedPlan
  * commit candidacy AND the tests are not green yet (i.e. there is something to
  * verify before finalize). Pure blackboard read, no side effects.
  */
+@Component
 class CommitCandidacyCondition {
     fun isArmed(context: OperationContext): Boolean {
         val hasValidated = context.objects.any { it is ValidatedPlan || it is ValidatedPatch }

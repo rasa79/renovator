@@ -25,6 +25,7 @@ import com.renovator.domain.CodePatch
 import com.renovator.domain.HumanDecision
 import com.renovator.domain.RepoModel
 import com.renovator.domain.RunRequest
+import com.renovator.domain.TestResult
 import com.renovator.domain.UpgradeBlocker
 import com.renovator.domain.UpgradeComplete
 import com.renovator.domain.UpgradeGoal
@@ -34,6 +35,7 @@ import com.renovator.execution.WorkspaceSnapshot
 import com.renovator.validation.CompileErrorParser
 import com.renovator.validation.ValidatedPatch
 import com.renovator.validation.ValidatedPlan
+import java.nio.file.Path
 
 // LEARN[012] @State loops: state scoping and why clearBlackboard = true exists
 // Why this way: a loop action that returns a state type the machine has already
@@ -69,6 +71,9 @@ sealed interface UpgradeStage
 data class Analyzing(
     val goal: UpgradeGoal,
     val runRequest: RunRequest,
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
 ) : UpgradeStage {
     @Action(cost = 0.05, description = "Analyze the target repository (pom facts)")
     fun analyzeRepository(): Planning {
@@ -77,6 +82,7 @@ data class Analyzing(
             goal = goal,
             runRequest = runRequest,
             repoModel = AnalyzeRepositoryAction.analyze(runRequest),
+            approvals = approvals,
         ).also { RunAudit.emit(TrajectoryEvent.StageEntered("Planning")) }
     }
 }
@@ -95,6 +101,9 @@ data class Planning(
      *  (without it the reject loop is a pure cycle and the search dead-ends —
      *  verified in this task). */
     val attempts: List<AttemptRecord> = emptyList(),
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
 ) : UpgradeStage {
     /** LLM proposal: returns the plan object (no transition — stays in Planning).
      *  On a replan the failure diagnosis is part of the prompt, so the second
@@ -162,7 +171,17 @@ data class Planning(
                 )
         ) {
             is ValidatePlanAction.Outcome.Accepted -> {
-                Applying(goal, runRequest, repoModel, outcome.plan).also {
+                if (approvals.plan) {
+                    return GatePending(
+                        goal = goal,
+                        runRequest = runRequest,
+                        repoModel = repoModel,
+                        validatedPlan = outcome.plan,
+                        gateKind = GateKind.PLAN_APPROVAL,
+                        approvals = approvals,
+                    ).also { RunAudit.emit(TrajectoryEvent.StageEntered("GatePending")) }
+                }
+                Applying(goal, runRequest, repoModel, outcome.plan, approvals = approvals).also {
                     RunAudit.emit(
                         TrajectoryEvent.ValidationOutcome(
                             checkName =
@@ -243,6 +262,9 @@ data class Applying(
     val repoModel: RepoModel,
     val validatedPlan: ValidatedPlan,
     val pendingPatch: ValidatedPatch? = null,
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
 ) : UpgradeStage {
     @Action(cost = 0.10, description = "Apply validated changes to a pristine workspace copy")
     fun applyValidatedChanges(): Verifying {
@@ -252,7 +274,7 @@ data class Applying(
         // applied to the SAME copy by the executor's patch path. The source tree is
         // never mutated (D7) — the copy is.
         val snapshot = ApplyValidatedChangesAction.apply(validatedPlan, runRequest, pendingPatch)
-        return Verifying(goal, runRequest, repoModel, validatedPlan, snapshot).also {
+        return Verifying(goal, runRequest, repoModel, validatedPlan, snapshot, approvals = approvals).also {
             RunAudit.emit(TrajectoryEvent.StageEntered("Verifying"))
         }
     }
@@ -264,6 +286,9 @@ data class Verifying(
     val repoModel: RepoModel,
     val validatedPlan: ValidatedPlan,
     val snapshot: WorkspaceSnapshot,
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
 ) : UpgradeStage {
     /** The judge's verdict: green -> Done; red -> Repairing. The loop transition
      *  (Verifying <-> Repairing) requires clearBlackboard = true. */
@@ -279,11 +304,24 @@ data class Verifying(
             ),
         )
         return if (verdict.build.success && verdict.tests.failed == 0) {
-            Done(goal, runRequest, validatedPlan, verdict).also {
-                RunAudit.emit(TrajectoryEvent.StageEntered("Done"))
+            if (approvals.commitCandidate) {
+                GatePending(
+                    goal = goal,
+                    runRequest = runRequest,
+                    repoModel = repoModel,
+                    validatedPlan = validatedPlan,
+                    gateKind = GateKind.COMMIT_CANDIDATE,
+                    verdict = verdict,
+                    snapshot = snapshot,
+                    approvals = approvals,
+                ).also { RunAudit.emit(TrajectoryEvent.StageEntered("GatePending")) }
+            } else {
+                Done(goal, runRequest, validatedPlan, verdict, approvals).also {
+                    RunAudit.emit(TrajectoryEvent.StageEntered("Done"))
+                }
             }
         } else {
-            Repairing(goal, runRequest, repoModel, validatedPlan, snapshot, verdict, emptyList()).also {
+            Repairing(goal, runRequest, repoModel, validatedPlan, snapshot, verdict, emptyList(), approvals).also {
                 RunAudit.emit(TrajectoryEvent.StageEntered("Repairing"))
             }
         }
@@ -296,6 +334,99 @@ data class Verifying(
     }
 }
 
+/** Which gate a [GatePending] frame is waiting at (D11): the plan proposal or the
+ *  green commit candidate. The frame is the SAME; the continuation differs. */
+enum class GateKind {
+    PLAN_APPROVAL,
+    COMMIT_CANDIDATE,
+}
+
+/**
+ * HITL gate (PLAN Task 5.3, D11): the machine parks HERE when an approval gate
+ * is armed. The park (WaitFor.formSubmission) is the render-side hook; the
+ * programmatic submission in Embabel 1.5.1 does not exist (the historical
+ * submitFormAndResumeProcess was removed — see issue #1447 and KL-09), so the
+ * C-6 fallback continues the run: RunService.submitDecision terminates the
+ * parked process and re-seeds a fresh one with [HumanDecision] on the board —
+ * the planner then picks approve/reject (decision bound) and parks/re-plans
+ * never (the park's `gateUnresolved` precondition closes once the decision is
+ * present). The comment rides the state data on reject.
+ */
+data class GatePending(
+    val goal: UpgradeGoal,
+    val runRequest: RunRequest,
+    val repoModel: RepoModel,
+    val validatedPlan: ValidatedPlan,
+    val gateKind: GateKind,
+    /** The green build verdict (commit gate only; the rejection carries it). */
+    val verdict: WorkspaceVerdict? = null,
+    /** The workspace copy the verdict was built on (commit gate); the rejection
+     *  carries it into the repair so the repair lane has the true file state. */
+    val snapshot: WorkspaceSnapshot? = null,
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
+) : UpgradeStage {
+    @Action(cost = 0.00, description = "Request approval: park at the gate", pre = ["gateUnresolved"])
+    fun park(context: OperationContext): HumanDecision {
+        AgentTrace.record("park")
+        RunAudit.emit(
+            TrajectoryEvent.Escalated(
+                question = "approval required (${gateKind.name.lowercase().replace('_', '-')}): ${validatedPlan.plan.rationale}",
+            ),
+        )
+        return com.embabel.agent.core.hitl.WaitFor.formSubmission(
+            "Approval required: ${gateKind.name.lowercase().replace('_', '-')} — ${validatedPlan.plan.rationale}",
+            HumanDecision::class.java,
+        )
+    }
+
+    @Action(cost = 0.00, description = "Approve: continue past the gate", pre = ["humanApproved"])
+    fun approve(decision: HumanDecision): UpgradeStage =
+        if (gateKind == GateKind.COMMIT_CANDIDATE) {
+            Done(goal, runRequest, validatedPlan, verdict ?: error("commit gate needs the green verdict"), approvals).also {
+                RunAudit.emit(TrajectoryEvent.StageEntered("Done"))
+            }
+        } else {
+            Applying(goal, runRequest, repoModel, validatedPlan, approvals = approvals).also {
+                RunAudit.emit(TrajectoryEvent.StageEntered("Applying"))
+            }
+        }
+
+    @Action(cost = 0.00, description = "Reject: route back with the human comment", pre = ["humanRejected"])
+    fun reject(decision: HumanDecision): UpgradeStage {
+        AgentTrace.record("gateRejected:${decision.comment}")
+        val rejection =
+            com.renovator.execution.Excerpt.of(
+                "HUMAN REJECTION (${gateKind.name.lowercase().replace('_', '-')}): ${decision.comment}",
+            )
+        return if (gateKind == GateKind.COMMIT_CANDIDATE) {
+            Repairing(
+                goal,
+                runRequest,
+                repoModel,
+                validatedPlan,
+                snapshot
+                    ?: com.renovator.execution.WorkspaceSnapshot(
+                        ref = com.renovator.execution.WorkspaceRef(Path.of(".")),
+                        sourceHash = "gate-rejection",
+                    ),
+                failedVerdict =
+                    WorkspaceVerdict(
+                        build = BuildResult(success = false, failedGoals = listOf("human-rejection"), log = rejection, durationMs = 0),
+                        tests = TestResult(0, 1, emptyList()),
+                    ),
+                attempts = emptyList(),
+                approvals = approvals,
+            ).also { RunAudit.emit(TrajectoryEvent.StageEntered("Repairing")) }
+        } else {
+            Planning(goal, runRequest, repoModel, lastFailure = null, approvals = approvals).also {
+                RunAudit.emit(TrajectoryEvent.StageEntered("Planning"))
+            }
+        }
+    }
+}
+
 data class Repairing(
     val goal: UpgradeGoal,
     val runRequest: RunRequest,
@@ -304,6 +435,9 @@ data class Repairing(
     val snapshot: WorkspaceSnapshot,
     val failedVerdict: WorkspaceVerdict,
     val attempts: List<com.renovator.domain.AttemptRecord>,
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
 ) : UpgradeStage {
     @Action(cost = 0.30, description = "Diagnose a failed build (LLM, typed binding)")
     fun diagnoseFailure(context: OperationContext): BuildDiagnosis {
@@ -417,7 +551,7 @@ data class Repairing(
                         reason = "",
                     ),
                 )
-                Applying(goal, runRequest, repoModel, validatedPlan, pendingPatch = outcome.patch).also {
+                Applying(goal, runRequest, repoModel, validatedPlan, pendingPatch = outcome.patch, approvals = approvals).also {
                     RunAudit.emit(TrajectoryEvent.StageEntered("Applying"))
                 }
             }
@@ -447,7 +581,7 @@ data class Repairing(
     @Action(cost = 0.05, description = "Return to planning with the failure diagnosis", pre = ["diagnosisSuggestsReplan"])
     fun replan(diagnosis: BuildDiagnosis): Planning {
         AgentTrace.record("replan")
-        return Planning(goal, runRequest, repoModel, lastFailure = diagnosis).also {
+        return Planning(goal, runRequest, repoModel, lastFailure = diagnosis, approvals = approvals).also {
             RunAudit.emit(TrajectoryEvent.StageEntered("Planning"))
         }
     }
@@ -481,6 +615,9 @@ data class Done(
     val runRequest: RunRequest,
     val validatedPlan: ValidatedPlan,
     val verdict: WorkspaceVerdict,
+    val approvals: com.renovator.config.RenovatorProperties.Approvals =
+        com.renovator.config.RenovatorProperties
+            .Approvals(),
 ) : UpgradeStage {
     @Action(cost = 0.05, description = "Finalize: the goal BuildGreen is satisfied")
     @AchievesGoal(description = "BuildGreen: the validated upgrade builds green with tests passing")

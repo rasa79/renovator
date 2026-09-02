@@ -13,8 +13,7 @@ import java.nio.file.Path
 class ReadmeStructureTest {
     private val readme = Files.readString(Path.of("README.md"))
 
-    private fun firstIndex(vararg needles: String): Int =
-        needles.map { readme.indexOf(it).takeIf { i -> i >= 0 } ?: Int.MAX_VALUE }.min()
+    private fun firstIndex(vararg needles: String): Int = needles.map { readme.indexOf(it).takeIf { i -> i >= 0 } ?: Int.MAX_VALUE }.min()
 
     @Test
     fun `what-is-this heading precedes any architecture heading`() {
@@ -48,7 +47,8 @@ class ReadmeStructureTest {
     fun `every user-visible KNOWN_LIMITATIONS entry has a README sentence`() {
         val kl = Files.readString(Path.of("KNOWN_LIMITATIONS.md"))
         val userVisible =
-            kl.lines()
+            kl
+                .lines()
                 .filter { it.startsWith("| KL-") }
                 .filter { it.contains("user-visible: yes") }
                 .mapNotNull { Regex("^\\| (KL-\\d+) \\|").find(it)?.groupValues?.get(1) }

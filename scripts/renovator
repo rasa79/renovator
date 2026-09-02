@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Renovator CLI (PLAN Task 5.4): submit / watch / decide / trajectory / status
+# over the control API. RENOVATOR_URL overrides the base (default localhost:8080).
+set -euo pipefail
+
+BASE="${RENOVATOR_URL:-http://localhost:8080}"
+cmd="${1:-}"
+
+json() {
+    python3 -c 'import json,sys; print(json.load(sys.stdin).get(sys.argv[1], ""))' "$1"
+}
+
+case "$cmd" in
+    submit)
+        # submit <repoPath> <groupId:artifactId:fromVersion:toVersion>
+        repo="$2"
+        gav="$3"
+        g="${gav%%:*}"
+        rest="${gav#*:}"
+        a="${rest%%:*}"
+        rest="${rest#*:}"
+        f="${rest%%:*}"
+        t="${rest#*:}"
+        resp=$(curl -s -X POST "$BASE/api/runs" -H 'Content-Type: application/json' -d "{
+          \"repoPath\": \"$repo\",
+          \"goal\": {\"targets\": [{\"groupId\": \"$g\", \"artifactId\": \"$a\",
+                       \"fromVersion\": \"$f\", \"toVersion\": \"$t\"}]}
+        }")
+        echo "$resp" | json runId
+        ;;
+    watch)
+        # watch <runId>: SSE stream (replayed then live; Ctrl-C to detach)
+        curl -sN "$BASE/api/runs/$2/stream"
+        ;;
+    decide)
+        # decide <runId> approve|reject [comment]
+        id="$2"
+        verdict="$3"
+        comment="${4:-}"
+        curl -s -X POST "$BASE/api/runs/$id/decisions" -H 'Content-Type: application/json' \
+            -d "{\"approved\": $([ "$verdict" = "approve" ] && echo true || echo false), \"comment\": \"$comment\"}"
+        ;;
+    trajectory)
+        # trajectory <runId> [eventType]
+        q=""
+        if [ -n "${3:-}" ]; then q="?type=$3"; fi
+        curl -s "$BASE/api/runs/$2/trajectory$q"
+        ;;
+    status)
+        curl -s "$BASE/api/runs/$2"
+        ;;
+    *)
+        echo "usage: renovator submit <repoPath> <g:a:from:to> | watch <id> | decide <id> approve|reject [comment] | trajectory <id> [type] | status <id>" >&2
+        exit 2
+        ;;
+esac

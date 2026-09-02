@@ -124,7 +124,28 @@ untouched at `eval/reports/2026-09-02-live-mini.md`. New run: `eval/reports/2026
 | gpt-4.1 | fixture-api-removal | FAIL | UpgradeBlocker | 5 | 1 |
 | gpt-4.1 | fixture-transitive-conflict | FAIL | UpgradeBlocker | 5 | 1 |
 
-**Diagnosis shift — toward prompt/harness, not model capability.** Under gpt-4.1 the
+**Prompt fix (committed, §13.3) — bounded to prompt text + grounding only.** The
+proposal prompt's schema carried bare `...` placeholders
+(`{"groupId": "...", "artifactId": "..."}`). A fix landed in
+`src/main/resources/prompts/propose_plan.st` (this is a prompt-only change: no
+changes to validation, the executor, the eval harness, the thresholds, or the
+fixtures — the mock gate stays byte-equivalent, MockEvalIT still 4/4, because
+canned plans bypass the prompt). The prompt now (a) inlines the CURRENT repository
+model and the upgrade goal, and (b) uses a concrete, real-looking filled-in example
+with zero bare `...`. See **LEARN[018]** for the essay.
+
+**Floor result after the fix (gpt-4.1, gated, dated):** `LIVE EVAL: floor (clean +
+no-path) PASS`; `LiveEvalIT` 1/1 (265 s), BUILD SUCCESS.
+
+The diagnosis was accepted:** the failure was prompt/harness (placeholder-echo), not
+model capability — the fix confirms it: the same gpt-4.1 that produced placeholder
+plans against the ungrounded schema produced a valid plan in ONE attempt for
+fixture-clean once the prompt carried real coordinates + a real example. The
+remaining two fixtures (api-removal, transitive-conflict) are REPORTED as
+incomplete (the live model's REPAIR path: its diagnosis failed typed binding ~9
+attempts), a separate live-model reproduction issue outside the floor.
+
+**Landscape — sequence and model pin:** Under gpt-4.1 the
 validate rejections name **placeholder coordinates the model echoed from the proposal
 schema** — the fixture-clean run (and the others) is rejected with e.g.
 `version target-artifact:2.0.0 does not exist in the version catalog`,
@@ -138,9 +159,18 @@ floor failing under the stronger model **stops the phase**: the human decides th
 move (prompt grounding work, or explicitly amending D13). The mock gate (4/4, canned
 pre-validated plans) is unaffected and remains the deterministic CI signal.
 
+**Live floor pin (recorded):** the D13 live floor is pinned to **gpt-4.1** (model change via
+config only; key unchanged). Under it, fixture-clean + fixture-no-path pass. The record
+(sequence: gpt-4.1-mini baseline -> gpt-4.1 ungrounded -> gpt-4.1 grounded-prompt fix):
+
+| phase | model | prompt | fixture-clean | fixture-no-path | live calls (clean/no-path) |
+|---|---|---|---|---|---|
+| baseline | gpt-4.1-mini | ungrounded (`...`) | FAIL (invented a dep absent from the fixture) | FAIL | 1 / 2 |
+| stronger | gpt-4.1 | ungrounded (`...`) | FAIL (echoed placeholder coords) | PASS | 1 / 1 |
+| **fixed** | **gpt-4.1** | **grounded (real coords + real example)** | **PASS (UpgradeComplete, 1 attempt)** | **PASS (UpgradeBlocker)** | 1 / 5 |
 ## §13.3 drift disclosure (Phase 6)
 
-- **Live-model plan-following**: the configured `gpt-4.1-mini` does not reliably produce valid plans for the fixtures (proposes dependency migrations the fixture lacks — recorded above). This is the model + prompt at the current pin; the mock gate is the deterministic signal.
+- **Prompt grounding (the Phase-6 remediation)**: the live proposal prompt now carries the actual repo model + goal and a concrete real example (no bare `...`). This is the committed fix that makes the D13 live floor pass under gpt-4.1; LEARN[018] + the phase-6 report remediation section carry the rationale. The earlier `gpt-4.1-mini`/ungrounded failures are retained untouched in eval/reports as the honest baseline.
 - **`micrometer-registry-prometheus`** added (the prometheus endpoint was announced but the registry dependency was absent).
 - **`eval/reports/*`** is a committed artifact (not gitignored) — the mock/live reports are part of the gate evidence.
 - The Phase-6 README is a subset of the Appendix-A-mandated README (the verbatim §8 material is Task 7.1); noted so the reviewer is not misled about which requirement is met.

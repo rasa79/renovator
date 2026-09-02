@@ -21,4 +21,5 @@ are deleted comments kept for numbering history; numbers are never reused.
 | 013 | JVM process persistence: the repository SPI over typed snapshots — what it buys vs Sentinel's Postgres checkpointer | src/main/kotlin/com/renovator/persistence/RunSnapshot.kt:12 | typed process snapshot vs DB checkpointer |
 | 014 | Honest termination: the attempt budget is a framework mechanism, not a convention | src/main/kotlin/com/renovator/config/ProcessOptionsFactory.kt:6 | bounded early termination (framework policy) |
 | 015 | The observable loop: replay-then-tail, and WaitFor as the BPMN human task | src/main/kotlin/com/renovator/api/RunService.kt:21 | SSE replay-then-tail + WaitFor BPMN task |
+| 016 | The audit trail is a feature: persist every decision before any UI exists | src/main/kotlin/com/renovator/audit/TrajectoryStore.kt:9 | audit trail as a feature |
 | 017 | LLM retry taxonomy: which HTTP errors are retryable and why | src/main/kotlin/com/renovator/agent/llm/LlmCall.kt:3 | retry taxonomy for LLM APIs |

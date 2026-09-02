@@ -6,6 +6,30 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Instant
 
+// LEARN[016] The audit trail is a feature: persist every decision before any UI exists
+// Why this way: a trajectory is the ONE artifact that answers "what did the agent
+//   decide, in what order, against what evidence?" — and it is the only such artifact
+//   that survives an agent whose behavior is emergent. So it is written FIRST, not as
+//   a UI afterthought: every proposal, plan attempt, validation outcome, build, and
+//   escalation is appended (typed, sequence-numbered, JSON) the moment it happens,
+//   long before any stream or REST surface existed (the SSE and CLI read it later —
+//   Phase 5). The write is append-only and interrupted-write-safe (the sequence
+//   counter walks backwards past a partial trailing line), so even a killed JVM
+//   leaves a coherent story (D14). The immutable-log+tailer split (LEARN[015]) is the
+//   direct consequence: replay is a file read, the live tail is only a bonus.
+// Good sides: the eval harness judges runs from the trajectory (D13) without touching
+//   the agent's internals; a reviewer can replay any run exactly; typed events carry
+//   the structured reason (a ValidationRejection names the check + the content), so
+//   "show me every decision" is queryable (Task 6.4), not prose.
+// Drawbacks: the file can grow (the LLM-call attempts repeat); the string-matching
+//   filters (Task 6.4) are cheap but not schema-typed (the JSON is the parity); and
+//   the trail is single-process (per-JVM) — a distributed agent needs a log bus (out
+//   of scope, KL-01).
+// Concept: think of it as a flight recorder plus a black box — record everything first;
+//   reconstruct and judge later. The recorder is not the plane; it is what lets anyone
+//   explain the plane.
+// See also: PLAN §5 / Tasks 3.4 & 6.4 (D13, D14), LEARN[015] (replay-then-tail), LEARN[014]
+
 /**
  * Append-only JSONL trajectory (PLAN Task 3.4 / D14): one line per typed event at
  * `var/runs/{runId}/trajectory.jsonl`, each with a monotonic sequence number.

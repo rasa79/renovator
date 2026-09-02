@@ -52,9 +52,10 @@ class RunController(
     fun trajectory(
         @PathVariable id: String,
         @RequestParam(name = "type", required = false) eventType: String?,
+        @RequestParam(name = "stage", required = false) stage: String?,
     ): Map<String, Any> {
         ensureKnown(id)
-        return mapOf("runId" to id, "events" to runs.trajectory(id, eventType))
+        return mapOf("runId" to id, "events" to runs.trajectory(id, eventType, stage))
     }
 
     /** KL-03: exists, is a directory under an allowed root, and contains pom.xml. */

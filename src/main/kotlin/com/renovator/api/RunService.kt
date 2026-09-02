@@ -135,7 +135,12 @@ class RunService(
     fun trajectory(
         runId: String,
         type: String? = null,
-    ): List<String> = store.read(runId).filter { line -> type == null || line.contains("\"eventType\":\"$type\"") }
+        stage: String? = null,
+    ): List<String> =
+        store.read(runId).filter { line ->
+            (type == null || line.contains("\"eventType\":\"$type\"")) &&
+                (stage == null || line.contains("\"stage\":\"$stage\""))
+        }
 
     /** The live process, if the run is still executing (HITL layers). */
     fun liveProcess(runId: String): AgentProcess? = processes[runId]

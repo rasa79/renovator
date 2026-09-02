@@ -151,10 +151,15 @@ class RepairLoopIT {
         scripted.enqueuePatch(LlmOutcome.Accepted(cannedPatch(), emptyList()))
         val order = runUpgrade(scripted)
 
-        // Exactly one repair cycle around the loop.
+        // Exactly one repair cycle around the loop. The LANE is asserted, not just
+        // the counts: the PATCH_CODE-only diagnosis closes the replan lane
+        // (DiagnosisHintCondition), so the machine must repair through the patch
+        // lane — a planner drift back to the replan lane (the 4.4 incident;
+        // postmortem in the phase-4 report) fails here on the `replan` count.
         assertEquals(1, order.count { it == "diagnoseFailure" }, "one diagnosis: $order")
         assertEquals(1, order.count { it == "proposePatch" }, "one patch proposal: $order")
         assertEquals(1, order.count { it == "validatePatch" }, "one patch validation: $order")
+        assertEquals(0, order.count { it == "replan" }, "patch lane chosen, not the replan lane: $order")
         assertEquals(2, order.count { it == "runBuild" }, "fail then green: exactly two builds: $order")
         assertEquals(2, order.count { it == "applyValidatedChanges" }, "initial apply + repair apply: $order")
         assertTrue(order.last() == "finalizeUpgrade", "run completes: $order")

@@ -9,7 +9,6 @@ import com.renovator.audit.RunAudit
 import com.renovator.audit.TrajectoryStore
 import com.renovator.config.JacksonConfig
 import com.renovator.config.ProcessOptionsFactory
-import com.renovator.config.RenovatorProperties
 import com.renovator.domain.BuildDiagnosis
 import com.renovator.domain.BuildResult
 import com.renovator.domain.CodePatch
@@ -32,23 +31,22 @@ import java.nio.file.Path
 /**
  * Kill-and-resume (PLAN Task 4.5, D10) on fixture-api-removal.
  *
- * phaseKill: the upgrade runs with maxActions=4 — the run is CUT MID-FLIGHT
- * (the framework's early termination, the SIGKILL equivalent: the process stops
- * while the machine is inside the Applying frame, no graceful completion, no
- * finalize, no Done) — and the typed snapshot lands on disk.
+ * phaseKill: starts the upgrade asynchronously and persists the typed snapshot
+ * the moment the machine enters the Applying frame. In DEMO mode
+ * (`-DkillDemo=1`, set by scripts/demo-kill-resume.sh) the test then HOLDS the
+ * JVM open — the script kills it with `kill -9` while this JVM is genuinely
+ * mid-flight (the run thread is executing its sandbox build when the SIGKILL
+ * lands), and the persisted snapshot plus trajectory are the only survivors of
+ * that JVM session. Without the property (the automated gate) the run simply
+ * completes and the persist is asserted.
  *
- * phaseResume: a FRESH process re-seeds from the snapshot (RunService.resume)
- * and the continuation runs: apply -> build fails (the migration breakage) ->
- * repair (canned) -> apply -> green -> UpgradeComplete — same run id, same
- * trajectory: one Resumed marker, NO repeated Analyze stage (the freshRun gate).
- *
- * scripts/demo-kill-resume.sh executes these two phases as separate JVMs
- * (#phaseKill then #phaseResume): the first JVM's run state exists only in the
- * snapshot when the second one starts.
+ * phaseResume: a fresh JVM re-seeds from the snapshot (RunService.resume — the
+ * continuation re-enters at the last apply, KL-08) and runs to UpgradeComplete.
  */
 @TestMethodOrder(MethodOrderer.MethodName::class)
 class KillResumeIT {
     private val runId = "kill-demo"
+    private val killDemo: Boolean = System.getProperty("killDemo") == "1"
 
     private fun goal(): UpgradeGoal =
         UpgradeGoal(targets = listOf(DependencyTarget("org.apache.commons", "commons-lang3", "2.6", "3.14.0")))
@@ -108,10 +106,30 @@ class KillResumeIT {
     private fun resetLine() {
         Files.deleteIfExists(Path.of("var/runs/$runId/trajectory.jsonl"))
         Files.deleteIfExists(Path.of("var/runs/$runId/process.json"))
+        Files.deleteIfExists(Path.of("var/runs/$runId/ready-to-kill.txt"))
+        Files.deleteIfExists(Path.of("var/runs/$runId/pid.txt"))
+    }
+
+    private fun awaitStage(
+        stage: String,
+        timeoutSeconds: Int = 120,
+    ) {
+        val traj = Path.of("var/runs/$runId/trajectory.jsonl")
+        val deadline =
+            System.nanoTime() +
+                java.util.concurrent.TimeUnit.SECONDS
+                    .toNanos(timeoutSeconds.toLong())
+        while (System.nanoTime() < deadline) {
+            if (Files.exists(traj) && Files.readString(traj).contains("\"stage\":\"$stage\"")) {
+                return
+            }
+            Thread.sleep(50)
+        }
+        error("timed out waiting for stage $stage; trajectory:\n${if (Files.exists(traj)) Files.readString(traj) else "(none)"}")
     }
 
     @Test
-    fun `phaseKill - run is cut mid Applying and the snapshot persists the typed frame`() {
+    fun `phaseKill - persist the Applying frame, then (demo mode) hold open until the JVM is killed`() {
         ScriptedLlm.cannedPlan = cannedPlan()
         ScriptedLlm.cannedDiagnosis = cannedDiagnosis()
         ScriptedLlm.cannedPatch = cannedPatch()
@@ -121,29 +139,43 @@ class KillResumeIT {
         RunAudit.runId = runId
         LlmChannel.actions = ScriptedLlm()
         try {
-            // The cut: maxActions=4 = analyze+analyzeRepo+propose+validate — the
-            // machine is inside the Applying frame when the policy fires. Not
-            // graceful: no Done, no finalize, no UpgradeComplete.
+            // The run is STARTED, not cut: with the demo property the script's
+            // kill -9 lands while this JVM is genuinely mid-flight.
             val options =
-                ProcessOptionsFactory(
-                    RenovatorProperties(budget = RenovatorProperties.Budget(maxActions = 4)),
-                ).processOptions(com.embabel.agent.api.common.PlannerType.GOAP)
+                ProcessOptionsFactory()
+                    .processOptions(com.embabel.agent.api.common.PlannerType.GOAP)
             val running = platform().createAgentProcess(metadata(), options, mapOf("goal" to goal(), "runRequest" to runRequest))
-            running.run()
-            assertEquals(com.embabel.agent.core.AgentProcessStatusCode.TERMINATED, running.status, "cut mid-flight by the policy")
-            val order = AgentTrace.snapshot()
-            assertTrue(order.none { it == "runBuild" }, "never reached the build: $order")
-            assertTrue(order.none { it == "finalizeUpgrade" }, "never finalised: $order")
+            val thread = Thread { running.run() }
+            thread.start()
 
+            awaitStage("Applying")
             val repo = JsonFileAgentProcessRepository()
-            // Persist the killed frame NOW (the JVM keeps running only to write
-            // this; the demo script's process death leaves precisely this file).
-            repo.update(running)
+            repo.update(running) // persist the current frame + applied payload
             val snapshot = repo.load(runId)
-            assertNotNull(snapshot, "the snapshot must be on disk when the run dies")
-            assertEquals("Applying", snapshot!!.frame, "killed in the Applying frame")
-            assertEquals(1, snapshot.planSteps.size, "the plan payload is the canned migration")
-            println("KILLED at stage Applying (pid ${ProcessHandle.current().pid()})")
+            assertNotNull(snapshot, "the snapshot must be on disk at the Applying marker")
+            assertTrue(snapshot!!.planSteps.isNotEmpty(), "the applied payload is in the snapshot")
+
+            val pid = ProcessHandle.current().pid()
+            Files.writeString(Path.of("var/runs/$runId/pid.txt"), pid.toString())
+            Files.writeString(
+                Path.of("var/runs/$runId/ready-to-kill.txt"),
+                "frame=${snapshot.frame}\nsnapshotAt=${snapshot.snapshotAt}\nreadyAt=${java.time.Instant.now()}\n",
+            )
+            println("APPLYING FRAME PERSISTED (frame=${snapshot.frame}, snapshotAt=${snapshot.snapshotAt}) — pid $pid")
+
+            if (killDemo) {
+                // Hold open: the script polls ready-to-kill.txt then SIGKILLs this
+                // pid. The run thread is mid-flight (building in the sandbox).
+                while (true) {
+                    Thread.sleep(60_000)
+                }
+            } else {
+                // Automated gate: the run completes; the persist is the assertion.
+                thread.join(300_000)
+                assertTrue(!thread.isAlive, "the run finished")
+                val lines = TrajectoryStore().read(runId)
+                assertTrue(lines.any { it.contains("\"stage\":\"Applying\"") }, "Applying was entered")
+            }
         } finally {
             LlmChannel.actions = LlmActions()
             RunAudit.clear()
@@ -153,7 +185,8 @@ class KillResumeIT {
     @Test
     fun `phaseResume - the resumed run reaches UpgradeComplete with one Resume marker and no repeated Analyze`() {
         // The continuation needs the same scripted LLM (the migration still fails
-        // the build once; the repair lane diagnoses + patches it).
+        // the build once; the repair lane diagnoses + patches it — re-derived in
+        // the continuation, KL-08).
         ScriptedLlm.cannedPlan = cannedPlan()
         ScriptedLlm.cannedDiagnosis = cannedDiagnosis()
         ScriptedLlm.cannedPatch = cannedPatch()

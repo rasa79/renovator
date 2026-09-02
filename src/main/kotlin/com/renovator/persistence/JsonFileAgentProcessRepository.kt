@@ -67,18 +67,59 @@ class JsonFileAgentProcessRepository(
 
 /** Builds a [RunSnapshot] from a live process's blackboard (typed reads only). */
 object ApplySnapshot {
+    /** The persisted snapshot of the machine's CURRENT frame. The payload is the
+     *  applied plan (+ pending patch) — the same continuation payload for every
+     *  frame from Applying onward (KL-08); frames before the first apply have no
+     *  payload and are not persisted (Analyzing/Planning/Blocked/Done). */
     fun of(process: AgentProcess): RunSnapshot? {
-        val applying = process.objects.filterIsInstance<Applying>().lastOrNull() ?: return null
+        val frame =
+            process.objects
+                .filterIsInstance<com.renovator.agent.states.UpgradeStage>()
+                .lastOrNull() ?: return null
+        val goal: com.renovator.domain.UpgradeGoal
+        val runRequest: com.renovator.domain.RunRequest
+        val repoModel: com.renovator.domain.RepoModel
+        val validatedPlan: com.renovator.validation.ValidatedPlan
+        val pendingPatch: com.renovator.domain.CodePatch?
+        when (frame) {
+            is Applying -> {
+                goal = frame.goal
+                runRequest = frame.runRequest
+                repoModel = frame.repoModel
+                validatedPlan = frame.validatedPlan
+                pendingPatch = frame.pendingPatch?.patch
+            }
+
+            is com.renovator.agent.states.Verifying -> {
+                goal = frame.goal
+                runRequest = frame.runRequest
+                repoModel = frame.repoModel
+                validatedPlan = frame.validatedPlan
+                pendingPatch = null
+            }
+
+            is com.renovator.agent.states.Repairing -> {
+                goal = frame.goal
+                runRequest = frame.runRequest
+                repoModel = frame.repoModel
+                validatedPlan = frame.validatedPlan
+                pendingPatch = null
+            }
+
+            else -> {
+                return null
+            }
+        }
         return RunSnapshot(
             runId = com.renovator.audit.RunAudit.runId ?: process.id,
-            frame = "Applying",
-            goal = applying.goal,
-            runRequest = applying.runRequest,
-            repoModel = applying.repoModel,
-            planSteps = applying.validatedPlan.plan.steps,
-            planRationale = applying.validatedPlan.plan.rationale,
-            proofCheckNames = applying.validatedPlan.proof.checkNames,
-            pendingPatch = applying.pendingPatch?.patch,
+            frame = frame::class.simpleName ?: "unknown",
+            goal = goal,
+            runRequest = runRequest,
+            repoModel = repoModel,
+            planSteps = validatedPlan.plan.steps,
+            planRationale = validatedPlan.plan.rationale,
+            proofCheckNames = validatedPlan.proof.checkNames,
+            pendingPatch = pendingPatch,
         )
     }
 }

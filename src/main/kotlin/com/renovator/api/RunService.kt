@@ -47,8 +47,12 @@ class RunService(
         val snapshot =
             repository.load(runId)
                 ?: error("no snapshot for run $runId (nothing was persisted for it)")
-        require(snapshot.frame == RunSnapshot.CURRENT_SUPPORTED_FRAME) {
-            "run $runId was killed in frame '${snapshot.frame}'; only ${RunSnapshot.CURRENT_SUPPORTED_FRAME} is resumable (KL-08)"
+        // KL-08: the resume re-enters AT THE LAST APPLY — the re-seed is the
+        // validated plan payload (+ pending patch), regardless of the frame the
+        // snapshot was taken in. Before the first apply there is no payload;
+        // such a snapshot is rejected rather than silently restarted.
+        require(snapshot.planSteps.isNotEmpty()) {
+            "run $runId has no applied payload yet (frame '${snapshot.frame}'); only runs past the first apply are resumable (KL-08)"
         }
         val applying =
             Applying(

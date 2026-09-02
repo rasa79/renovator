@@ -30,8 +30,10 @@ import com.renovator.validation.ValidatedPlan
 //   (D7: the source tree was never mutated, so re-application is deterministic).
 // Good sides: the enforcement boundary is intact across the kill (proof digest
 //   re-verified at apply); the repository is testable against mocks (typed
-//   round-trip asserted without a JVM); the frame support is EXPLICIT (KL-08:
-//   only Applying is resumable; a Repairing-frame kill restarts from scratch).
+//   round-trip asserted without a JVM); the resume boundary is EXPLICIT (KL-08:
+//   the continuation re-enters at the last apply — in-flight state, the sandbox
+//   copy and any diagnosis, is re-derived; runs before the first apply have no
+//   payload to resume from).
 // Drawbacks: a killed Repairing frame's diagnostic is lost with the workspace
 //   copy (see KL-08); the snapshot is not a transaction (a write is one file —
 //   atomic enough for the demo, not a DB); and a resumed run re-runs the last
@@ -58,17 +60,19 @@ import com.renovator.validation.ValidatedPlan
  * fresh copy (D7 — the source tree was never mutated, so re-application is
  * deterministic).
  *
- * // TODO(review) KL-08: resume supports the frames that can be continued from a
- * // re-applicable payload (Applying). A run killed in Repairing holds the
- * // failed build's sandbox copy (already deleted with the JVM) and its
- * // diagnostic; resuming it requires re-running the build to reproduce the
- * // failure, which the repository does NOT attempt — such a run restarts from
- * // scratch. Pre-declared fallback per PLAN Task 4.5; the phase report states
- * // the boundary honestly (see KNOWN_LIMITATIONS.md).
+ * // TODO(review) KL-08: the resume re-enters AT THE LAST APPLY. The snapshot is
+ * // the plan payload (+ pending patch), NOT the machine's in-flight state: the
+ * // sandbox copy and any BuildResult/Repairing diagnostic die with the JVM. So a
+ * // run killed in ANY frame from Applying onward resumes by re-applying the
+ * // validated plan to a fresh copy — the build runs again, and a failure's
+ * // diagnosis is re-derived. Before the first apply (Analyzing/Planning) there
+ * // is no payload yet and no resume is possible (§13.3 deviation, phase-4
+ * // report; see KNOWN_LIMITATIONS.md).
  */
 data class RunSnapshot(
     val runId: String,
-    /** The state type the machine was in ("Applying", "Verifying", ...). */
+    /** The state type the machine was in when the snapshot was taken
+     *  ("Applying", "Verifying", ...) — recorded as evidence, not a gate. */
     val frame: String,
     val goal: UpgradeGoal,
     val runRequest: RunRequest,
@@ -92,8 +96,4 @@ data class RunSnapshot(
             com.renovator.domain.UpgradePlan(steps = planSteps, rationale = planRationale),
             proofCheckNames,
         )
-
-    companion object {
-        const val CURRENT_SUPPORTED_FRAME = "Applying"
-    }
 }

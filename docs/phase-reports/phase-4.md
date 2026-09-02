@@ -81,41 +81,130 @@ versions, the enforcer rule, and the guava artifact are asserted verbatim in `Tw
   `StageEntered` = `Analyzing`, `Planning` × 6, `Blocked` — `Applying` appears **0** times
   (the fixture's `mustNotVisitStages`).
 
-## Kill-and-resume transcript (reviewer mandate) — verbatim
+## Kill-and-resume transcript (reviewer mandate) — real SIGKILL, verbatim
 
-`scripts/demo-kill-resume.sh` (two JVM sessions; phase 1 cut mid-Applying by the framework's
-early-termination policy at `maxActions=4` — the SIGKILL equivalent; the typed snapshot
-`var/runs/kill-demo/process.json` is the only survivor; phase 2 is a fresh JVM re-seeded
-from it):
+`scripts/demo-kill-resume.sh`, two JVM sessions. Phase 1 starts the upgrade
+(scripted LLM, async); the moment the machine enters Applying, the phase-1 test
+persists the typed snapshot + its own pid + a READY marker and HOLDS the JVM
+open while the run thread keeps working (the sandbox build). This script then
+executes `kill -9 <pid>` — the JVM dies uncontrolled, mid-run, no graceful
+shutdown. Phase 2 is a fresh JVM re-seeded from the snapshot.
+
+Demo output, verbatim:
 
 ```
-Phase 1: run the upgrade; cut it mid-Applying (early termination = SIGKILL
-equivalent); the typed snapshot is the ONLY survivor of this JVM session.
+== Kill-and-resume demo (PLAN Task 4.5, D10) ==
+run id: kill-demo
 
-KILLED at stage Applying (pid 54109)
+Phase 1: start the upgrade; persist the snapshot; the JVM stays live and
+mid-build until the SIGKILL below.
+
+snapshot marker (verbatim from phase 1):
+  frame=Applying
+  snapshotAt=2026-09-02T03:38:58.439364454Z
+  readyAt=2026-09-02T03:38:58.842339704Z
+
+kill command: kill -9 3057   # the JVM is mid-run at this moment
+killed at: 2026-09-02T03:38:58.962766359Z
+phase-1 JVM is dead (no graceful shutdown; maven exit was non-zero by the fork loss)
 
 Phase 2: fresh JVM; resume from the persisted snapshot.
 
 RESUMED run kill-demo -> UpgradeComplete
 ```
 
-Framework log lines around the cut (verbatim) and the continuation (verbatim):
+**Timing relative to the last persisted frame** (the evidence set): the snapshot
+was persisted at `03:38:58.439Z` (the Applying frame); the READY marker at
+`03:38:58.842Z`; the SIGKILL landed at `03:38:58.962Z` — **120 ms after the
+last persisted frame**, while the run thread was inside the sandbox build (the
+trajectory's last pre-death events: `StageEntered(Applying)` at `58.393Z`,
+`StageEntered(Verifying)` at `58.443Z`, then nothing until the resume).
+
+Trajectory, same run id, both sides (verbatim lines, `var/runs/kill-demo/trajectory.jsonl`):
 
 ```
-Action Planning.validatePlan returned class com.renovator.agent.states.Applying: clearing blackboard and binding only the output instance
-(phase 1 JVM exits here — the run is cut; no Done, no finalize, no UpgradeComplete)
-Action Verifying.runBuild returned class com.renovator.agent.states.Repairing: clearing blackboard and binding only the output instance
-Action Repairing.validatePatch returned class com.renovator.agent.states.Applying: clearing blackboard and binding only the output instance
-Action Verifying.runBuild returned class com.renovator.agent.states.Done: clearing blackboard and binding only the output instance
-(phase 2 — the continuation: apply -> build fails (migration breakage) -> repair -> green)
+{"seq":1,...,"stage":"Analyzing","at":"2026-09-02T03:38:57.575614092Z"}
+{"seq":6,...,"stage":"Applying","at":"2026-09-02T03:38:58.393086866Z"}
+{"seq":7,...,"stage":"Verifying","at":"2026-09-02T03:38:58.443241117Z"}
+----- (phase-1 JVM is SIGKILLed at 03:38:58.962Z — the run dies mid-build, no
+       BuildObserved, no Done, no Completed; 12.5 s of "nothing" until the resume)
+{"seq":8,...eventType":"Resumed","reason":"kill-and-resume: JVM died during frame Applying","frame":"Applying","at":"2026-09-02T03:39:11.506511538Z"}
+{"seq":10,...,"BuildObserved","success":false,"failedGoals":["[maven-compiler-plugin:compile]"],"durationMs":2885,...}
+{"seq":18,...,"BuildObserved","success":true,"failedGoals":[],"durationMs":4198,...}
+{"seq":21,...eventType":"Completed","terminal":"UpgradeComplete",...}
 ```
 
-The continuation's trajectory (same run id): **one** `StageEntered("Analyzing")` (the original
-run only — the `freshRun` precondition closes the entry when a state is already on the
-reseeded blackboard), one `Resumed` marker, `Completed(UpgradeComplete)`.
+The continuation (seq 8–21): `Resumed(frame=Applying)` → the machine re-enters
+at the last apply (`Verifying` — the re-apply) → build FAILS (the migration
+breakage re-produces exactly: `[maven-compiler-plugin:compile]`) → repair
+(diagnose → patch, re-derived) → `Verifying` → build GREEN → `Done` →
+`Completed(UpgradeComplete)`. **One** `StageEntered("Analyzing")` in the whole
+file (the original run only — the `freshRun` precondition closes the entry when
+a state is already on the reseeded blackboard); the counts are asserted in
+`KillResumeIT.phaseResume`.
+
+## RepairLoopIT lane-flip incident — postmortem (reviewer mandate)
+
+**Symptom.** After the 4.4 changes, `RepairLoopIT` flipped from the patch lane
+to the replan lane: the planner executed `[diagnoseFailure, replan,
+proposeUpgradePlan, ...]` and the scripted plan queue (one entry) threw on the
+second proposal; each test took **183 s** instead of ~10 s.
+
+**Falsified hypotheses (in order, with the experiment):**
+1. *ktlint formatting* — formatting-only diff; no.
+2. *`@AchievesGoal` on the WaitFor park* — removed it; the flip persisted.
+3. *`proposePatch`'s lane precondition* — probe printed the blackboard at the
+   repair tick: `diag=true kinds=[PATCH_CODE, MULTI_HOP] -> true` — the patch
+   lane was OPEN; no.
+4. *`exhaustPlanSpace` (new 0.00-cost action)* — annotation stripped; no.
+5. *`RenovatorAgent` changes (budget ctor param, new condition)* — agent class
+   reverted to the 4.3 source; no.
+6. *`validatePlan`'s `clearBlackboard`* — removed; no.
+7. **Confirmed cause:** the 4.4 `validatePlan` rework — the reject path changed
+   from `throw ReplanRequestedException` to a state RETURN (fresh `Planning`
+   frame) **plus** `clearBlackboard=true` **plus** the return type widened from
+   `Applying` to `UpgradeStage`. Restoring exactly the 4.3 `validatePlan`
+   semantics (keep everything else 4.4) made the flip vanish — and re-applying
+   the rework brought it back. The widened/loop-capable `validatePlan` changed
+   the planner's cost/reachability model of the replan lane at the repair
+   decision point, making the replan lane win over the cheaper patch lane.
+
+**What the 4.4 rework was FOR.** The state return was load-bearing: the throw
+version drives the framework's action-retry into an infinite blacklist/
+re-propose storm (3000+ validation outcomes in a 3321-line run — the 4.4
+finding; see LEARN[014] drawback 3). It could not simply be reverted.
+
+**The fix (two parts).** (a) The lane choice is now DETERMINISTIC instead of
+cost-arbitrated: `DiagnosisHintCondition` gates both lanes — open while no
+diagnosis exists (a `@Condition` only sees the current blackboard; gating both
+pre-diagnosis dead-locks the planner), and hint-decided once it does with
+**disjoint hint sets per fixture**: the 4.2 canned diagnosis is `PATCH_CODE`
+only (the replan lane stays closed), the transitive-conflict diagnosis is
+`PIN_TRANSITIVE`/`MULTI_HOP` only (the patch lane stays closed). (b) The
+attempt ledger rides the `Planning` state — which is also what makes each
+rejection-loop frame a distinct node so the planner's search can traverse the
+spiral (LEARN[014] drawback 1).
+
+**Regression evidence.** `RepairLoopIT` now asserts the lane itself:
+`assertEquals(0, order.count { it == "replan" })` plus the existing patch-lane
+counts — a re-flip to the replan lane fails on the trace, not on a downstream
+queue crash. `TwoHopReplanIT` asserts the mirror image: `proposePatch` throws
+`AssertionError` if the planner ever asks for a patch (the lane is closed) and
+`order.count { it == "proposePatch" } == 0`.
+
+**The 183 s/test anomaly** (verified arithmetic): the flipped runs entered the
+replan lane with an empty plan queue; `NoSuchElementException` was treated as a
+transient action failure by the framework's retrier, so the whole
+[propose → L3 → reject] cycle repeated with the framework's max-attempts/retry
+backoff — and **every** `validatePlan` rejection ran the L3 version-existence
+check against repo1 (~110 ms per cycle, observed at `15:07:59.024 → .134 →
+.245 → ...` intervals). The observed storm line count and the arithmetic
+line up: ~3300 cycles × ~110 ms ≈ 365 s ≈ the observed 366 s for the two tests
+(≈183 s/test). It was a network-round-trip retry storm, not a hang.
 
 ## LEARN quote in full + restate — LEARN[014] (honest termination)
 
+> ```text
 > // LEARN[014] Honest termination: the attempt budget is a framework mechanism, not a convention
 > // Why this way: an agent that "keeps trying" with no exit costs a human an unkillable
 > //   process, and a budget that only the agent remembers is a budget nobody can audit.
@@ -147,6 +236,7 @@ reseeded blackboard), one `Resumed` marker, `Completed(UpgradeComplete)`.
 > // Concept: two circuit breakers in series — the agent's own (report), then the
 > //   platform's (cut). The human gets a report before the fuse blows.
 > // See also: PLAN §6, PLAN Task 4.4 (C-7), LEARN[012] (state-carried data), KL-01/08
+> ```
 
 **Restate (in my own words):** a bounded agent is not a convention the agent itself
 remembers — it is a declared, framework-enforced policy (`firstOf(maxActions, ON_STUCK)`)
@@ -192,13 +282,27 @@ into an infinite blacklist/re-propose storm.
   `maven-enforcer-rules`).
 - 4.1's ktlint debt fixed inside the 4.2 commit (see finding 5) — recorded here rather
   than silently absorbed.
+- **4.5 kill-and-resume (reviewer remediation)**: the plan's Task-4.5 framing of the
+  demo ("cut mid-flight, then resume") was first realized with the framework's
+  `maxActions` early termination — an orderly framework cut, NOT a SIGKILL, and
+  `KillResumeIT` described it as the "SIGKILL equivalent". That description was
+  wrong and is retracted: the demonstration now kills the run JVM with a real
+  `kill -9` (script-driven, 120 ms after the last persisted frame), and the
+  resume re-enters at the last apply. The KL-08 boundary was correspondingly
+  widened: the snapshot is the applied payload, not the frame — a run killed in
+  ANY frame from Applying onward resumes by re-applying (the in-flight sandbox
+  copy, `BuildResult` and diagnosis are re-derived). Frames before the first
+  apply have no payload and are not resumable — recorded in KL-08's rationale.
 
 ## KL state
 
-- **KL-08** (new, this phase): resume supports only the Applying frame — a kill inside
-  Repairing loses the failed build's sandbox copy + diagnostic with the JVM; such a run
-  restarts from scratch. Marker `TODO(review) KL-08` at `persistence/RunSnapshot.kt`;
-  ledger row added (ascending order; the checker's new ordering rule is active).
+- **KL-08** (this phase, updated by the remediation): the resume re-enters at the
+  last apply — the snapshot is the validated plan payload (+ pending patch), not the
+  machine's in-flight state; the sandbox copy, `BuildResult`, and any diagnosis die
+  with the JVM and are re-derived. A run killed before the first apply has no payload
+  and is not resumable. Marker `TODO(review) KL-08` at `persistence/RunSnapshot.kt`;
+  ledger row added and updated (ascending order; the checker's new ordering rule is
+  active).
 - **KL-09** (unchanged): the WaitFor programmatic submission path — the C-6 fallback
   verification and its final state are recorded in Phase 5 (Task 5.3 makes it permanent
   or not). This phase proves the WAITING park and the seeded resume; the submission side

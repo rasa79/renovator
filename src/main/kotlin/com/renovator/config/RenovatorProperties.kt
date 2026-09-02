@@ -17,7 +17,14 @@ data class RenovatorProperties(
     val validation: Validation = Validation(),
     val approvals: Approvals = Approvals(),
     val budget: Budget = Budget(),
+    val api: Api = Api(),
 ) {
+    /** Control-API settings (PLAN Task 5.1; KL-03 roots). */
+    data class Api(
+        /** Allowed repo roots for submissions (empty = the working directory). */
+        val allowedRoots: List<String> = emptyList(),
+    )
+
     /** Dual-provider LLM settings (D5). [provider] is `cloud` or `ollama`. */
     data class Llm(
         val provider: String = "cloud",

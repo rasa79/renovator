@@ -17,7 +17,19 @@ object RunAudit {
     var runId: String? = null
 
     fun emit(event: TrajectoryEvent) {
-        runId?.let { store.append(it, event) }
+        runId?.let { id ->
+            val seq = store.append(id, event)
+            TrajectoryBus.publish(
+                TrajectoryBus.PublishedEvent(
+                    runId = id,
+                    seq = seq,
+                    line =
+                        com.renovator.validation.ProposalJson.mapper.writeValueAsString(
+                            PublishLine(seq = seq, event = event),
+                        ),
+                ),
+            )
+        }
     }
 
     /** Entry seam: mint a fresh id per run (only when the test has not pinned one). */
@@ -36,4 +48,11 @@ object RunAudit {
     }
 
     fun store(): TrajectoryStore = store
+
+    /** Same shape as the store's envelope: {"seq":N,"event":{...}} — the bus
+     *  delivers bytes identical to what the file holds (the SSE data lines). */
+    private data class PublishLine(
+        val seq: Long,
+        val event: TrajectoryEvent,
+    )
 }

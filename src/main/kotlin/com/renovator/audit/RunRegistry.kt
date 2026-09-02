@@ -15,6 +15,15 @@ class RunRegistry {
     // pre-declared out-of-scope item (PLAN §12).
     fun start(plannedRunId: String): Boolean = active.add(plannedRunId)
 
+    /** The single-run gate (KL-01): the run id, or null when ANY run is already
+     *  active (the 409 path). Always [finish] the id in a finally. */
+    fun tryBegin(): String? =
+        if (active.isEmpty()) {
+            RunAudit.newRunId().also { active.add(it) }
+        } else {
+            null
+        }
+
     fun finish(runId: String) {
         active.remove(runId)
     }

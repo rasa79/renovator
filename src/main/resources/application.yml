@@ -53,6 +53,10 @@ renovator:
   budget:
     max-actions: ${MAX_ACTIONS:25}
     max-attempts: ${MAX_ATTEMPTS:5}
+  # api.allowed-roots: the code default (empty = working directory) is used;
+  # setting it here requires a populated list — Spring cannot bind a blank to
+  # List<String>.
+
 
 # ---------------------------------------------------------------------------
 # Embabel wiring. See docs/verification-log.md rows C-8 for why:

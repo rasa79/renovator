@@ -5,8 +5,10 @@ target/
 var/runs/*
 !var/runs/.gitkeep
 
-# Logs
+# Logs — runtime output only. Committed test-fixture logs below are
+# source-controlled (a fresh clone must reproduce the fixture tests).
 *.log
+!src/test/resources/buildlogs/*.log
 
 # Local tooling scratch inside the repo (ctx7 CLI installed workspace-local,
 # because the environment does not permit global npm installs — see phase-0 report)

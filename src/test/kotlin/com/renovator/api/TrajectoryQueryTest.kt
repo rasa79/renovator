@@ -13,21 +13,41 @@ import java.nio.file.Path
  * var/runs/ produced by the test suite).
  */
 class TrajectoryQueryTest {
-
     private fun freshTrajectory(): String {
         val runId = "query-it"
-        Path.of("var/runs/$runId/trajectory.jsonl")
+        Path
+            .of("var/runs/$runId/trajectory.jsonl")
             .toFile()
             .parentFile
             .mkdirs()
         Files.deleteIfExists(Path.of("var/runs/$runId/trajectory.jsonl"))
-        com.renovator.audit.RunAudit.clear()
+        com.renovator.audit.RunAudit
+            .clear()
         com.renovator.audit.RunAudit.runId = runId
-        com.renovator.audit.RunAudit.emit(com.renovator.audit.TrajectoryEvent.StageEntered("Analyzing"))
-        com.renovator.audit.RunAudit.emit(com.renovator.audit.TrajectoryEvent.PlanAttempted(rationale = "bump", stepCount = 1))
-        com.renovator.audit.RunAudit.emit(com.renovator.audit.TrajectoryEvent.ValidationOutcome(checkName = "L3:version-exists", accepted = false, reason = "nope"))
-        com.renovator.audit.RunAudit.emit(com.renovator.audit.TrajectoryEvent.StageEntered("Planning"))
-        com.renovator.audit.RunAudit.emit(com.renovator.audit.TrajectoryEvent.Completed(terminal = "UpgradeComplete"))
+        com.renovator.audit.RunAudit
+            .emit(
+                com.renovator.audit.TrajectoryEvent
+                    .StageEntered("Analyzing"),
+            )
+        com.renovator.audit.RunAudit
+            .emit(
+                com.renovator.audit.TrajectoryEvent
+                    .PlanAttempted(rationale = "bump", stepCount = 1),
+            )
+        com.renovator.audit.RunAudit.emit(
+            com.renovator.audit.TrajectoryEvent
+                .ValidationOutcome(checkName = "L3:version-exists", accepted = false, reason = "nope"),
+        )
+        com.renovator.audit.RunAudit
+            .emit(
+                com.renovator.audit.TrajectoryEvent
+                    .StageEntered("Planning"),
+            )
+        com.renovator.audit.RunAudit
+            .emit(
+                com.renovator.audit.TrajectoryEvent
+                    .Completed(terminal = "UpgradeComplete"),
+            )
         return runId
     }
 
@@ -40,7 +60,11 @@ class TrajectoryQueryTest {
         val plans = store.read(runId).filter { it.contains("\"eventType\":\"PlanAttempted\"") }
         assertTrue(plans.size == 1, "one plan attempt: $plans")
         // The endpoint-level filter (RunService.trajectory with type) does the same.
-        val svc = RunService(com.embabel.agent.test.integration.IntegrationTestUtils.dummyAgentPlatform())
+        val svc =
+            RunService(
+                com.embabel.agent.test.integration.IntegrationTestUtils
+                    .dummyAgentPlatform(),
+            )
         val byType = svc.trajectory(runId, "ValidationOutcome")
         assertTrue(byType.size == 1 && byType.single().contains("L3:version-exists"), "type filter: $byType")
     }
@@ -48,7 +72,11 @@ class TrajectoryQueryTest {
     @Test
     fun `filters by stage`() {
         val runId = freshTrajectory()
-        val svc = RunService(com.embabel.agent.test.integration.IntegrationTestUtils.dummyAgentPlatform())
+        val svc =
+            RunService(
+                com.embabel.agent.test.integration.IntegrationTestUtils
+                    .dummyAgentPlatform(),
+            )
         val analyzing = svc.trajectory(runId, stage = "Analyzing")
         assertTrue(analyzing.size == 1 && analyzing.single().contains("\"stage\":\"Analyzing\""), "stage filter: $analyzing")
         val combined = svc.trajectory(runId, type = "StageEntered", stage = "Planning")
@@ -60,7 +88,10 @@ class TrajectoryQueryTest {
         // Property-flavored, over every trajectory file the suite produces.
         val roots = listOf(Path.of("var/runs"))
         var checked = 0
-        val mapper = com.renovator.config.JacksonConfig().proposalObjectMapper()
+        val mapper =
+            com.renovator.config
+                .JacksonConfig()
+                .proposalObjectMapper()
         for (root in roots) {
             if (!Files.exists(root)) {
                 continue

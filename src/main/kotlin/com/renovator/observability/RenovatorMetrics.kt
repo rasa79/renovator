@@ -58,13 +58,20 @@ class RenovatorMetrics(
                     }
                 }
 
-                is TrajectoryEvent.PlanAttempted -> counter("renovator.plans.attempted")?.increment()
-                is TrajectoryEvent.ValidationOutcome ->
+                is TrajectoryEvent.PlanAttempted -> {
+                    counter("renovator.plans.attempted")?.increment()
+                }
+
+                is TrajectoryEvent.ValidationOutcome -> {
                     if (!event.accepted) {
                         counter("renovator.validation.rejections", event.checkName)?.increment()
                     }
+                }
 
-                is TrajectoryEvent.Escalated -> counter("renovator.escalations.total")?.increment()
+                is TrajectoryEvent.Escalated -> {
+                    counter("renovator.escalations.total")?.increment()
+                }
+
                 is TrajectoryEvent.Completed -> {
                     val started = startOfRun.remove(id)
                     val reg = registry
@@ -73,9 +80,10 @@ class RenovatorMetrics(
                     }
                 }
 
-                else -> Unit
+                else -> {
+                    Unit
+                }
             }
         }
     }
-
 }
